@@ -1,0 +1,166 @@
+---
+title-meta: "LTS-Report"
+output:
+  pdf_document: 
+    latex_engine: lualatex
+#    keep_tex: true
+# This needs to stay, because 'xcolor' package can not be loaded with option 'table' as this would lead to a clash
+# see this link: https://community.rstudio.com/t/colors-by-names-using-xcolor-latex-error-option-clash-for-package-xcolor/81514/4
+classoption: table
+header-includes:
+#- \usepackage{float}
+#- \floatplacement{figure}{H}  
+#- \usepackage{booktabs}
+- \usepackage{xcolor}
+- \usepackage{caption}
+- \usepackage{fontspec}
+- "\\setmainfont{BAMKlavika-Light.ttf}[BoldFont = BAMKlavika-Medium.ttf, ItalicFont = BAMKlavika-LightItalic.ttf, BoldItalicFont = BAMKlavika-MediumItalic.ttf]"
+fig_caption: yes
+params:
+  dat: NA
+  logo_file: NA
+  fnc: NA
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+# the number of lines for the table fitting on a page (!keep it at an even number)
+l_max <- 45
+# the index of the KW which the report is generated for (currently fixed to 1)
+i <- 1
+
+# is the Rmd processing in testing mode (not called by the Shiny App)
+testing <- length(params$dat)==1L && (is.na(params$dat) | params$dat=="NA")
+if (testing) {
+  report_file <- system.file("app/www/reports/report_vorlage_lts.Rmd", package = "eCerto")
+  LTS_dat <- eCerto::LTS001
+  d <- LTS_dat[[i]][["def"]]
+  v <- LTS_dat[[i]][["val"]]
+  l <- "BAMLogo2015.png"
+  if (!file.exists(file.path(dirname(report_file), l))) {
+    warning(l, " is not in same folder as ", basename(report_file))
+  }
+  plot_lts_data <- eCerto:::plot_lts_data
+} else {
+  d <- params[["dat"]][[i]][["def"]]
+  v <- params[["dat"]][[i]][["val"]]
+  l <- params[["logo_file"]]
+  plot_lts_data <- params[["fnc"]][["plot_lts_data"]]
+}
+```
+
+```{r logo, echo=FALSE, fig.align='right', fig.height = 0.5}
+# show BAM Logo topright
+if (!(is.null(l) | is.na(l))) {
+    logo_raster <- as.raster(magick::image_read(path = l))
+    graphics::par(mar=c(1,0,0,0))
+    layout(mat = matrix(1:2,ncol = 2), widths = c(0.8,0.2))
+    plot(1,1,axes=F,ann=F, type="n")
+    mtext(side = 3, line = -1, text = "Long-Term Stability (LTS)", adj = 0, font=2)
+    mtext(side = 3, line = -2.25, text = paste("Material:", d[,"RM"]), adj = 0)
+    mtext(side = 3, line = -2.25, text = paste("Date:", format(Sys.time(), '%Y-%m-%d')), adj = 0.75)
+    plot(logo_raster)
+}
+  
+```
+
+```{r plots, echo=FALSE, results='asis', dev.args = list(pointsize = 9), fig.height = 3.5}
+  # 2 plots as in App version
+  graphics::par(mar=c(5,4,4,2)+0.1)
+  graphics::par(mfrow=c(1,2))
+    x <- list("val"=v, "def"=d)
+    plot_lts_data(x = x, type=1)
+    lts <- plot_lts_data(x = x, type=2)
+  graphics::par(mfrow=c(1,1))
+```
+
+```{r stats}
+U_lts_rel <- stats::sd(v[,"Value"])/median(v[,"Value"])
+s_x <- stats::sd(v[,"Value"])/sqrt(nrow(v))
+s_xrel <- s_x/median(v[,"Value"])
+CI <- stats::sd(v[,"Value"])*qt(0.975, nrow(v)-1)/sqrt(nrow(v)-1)
+U_ilc <- round(100*d[,"U"]/d[,"CertVal"],2)
+U_lts <- round(100*switch(d[,"U_Def"], "1s"=U_lts_rel, "2s"=2*U_lts_rel, "CI"=CI/median(v[,"Value"]), "1sx"=s_xrel, "2sx"=2*s_xrel), 2)
+n_digits <- nchar(strsplit(as.character(d[,"CertVal"]), "[.]")[[1]][2])
+tab1_property_string <- paste0(d[,"KW_Def"], " (", d[,"KW"],")")
+tab1_cert_val_string <- paste(d[,"CertVal"], "±",  d[,"U"], "/", 100*d[,"Coef_of_Var"], "rel. [%] (", d[,"U_Def"], ")", d[,"KW_Unit"])
+tab2_median_val_string <- paste(round(median(v[,"Value"]), n_digits), d[,"KW_Unit"])
+```
+
+**RM Informations**
+
+|      |           |
+| ---: | :-------- |
+| Name:                        | **`r d[,"RM"]`**             |
+| Property:                    | **`r tab1_property_string`** |
+| Certified Value:             | **`r tab1_cert_val_string`** |
+| Number of accepted datasets: | **`r d[,"acc_Datasets"]`**   |
+
+**Statistical Information monitoring (LTS)**
+
+|        |     |     |     |     |
+| -----: | --- | --- | --- | --- |
+| Number of measurements:                          | **`r nrow(v)`**                      |                                        | Median:                                | **`r tab2_median_val_string`**                |
+| Standarddeviation:                               | **s=`r round(sd(v[,"Value"]), 2)`**  | **s~rel~=`r round(100*U_lts_rel,2)`%** | **2s=`r round(2*sd(v[,"Value"]), 2)`** | **2s~rel~=`r round(2*100*U_lts_rel,2)`%**     |
+| Standarddeviation of mean:                       | **s~x~=`r round(s_x, 4)`**           | **s~x,rel~=`r round(100*s_xrel,2)`%**  | **2s~x~=`r round(2*s_x, 4)`**          | **2s~x,rel~=`r round(2*100*s_xrel,2)`%**      |
+| Confidence interval:                             | (CI~0.95~)                           | **`r round(CI, 4)`**                   | (CI~0.95,rel~)                         | **`r round(100*CI/median(v[,"Value"]), 2)`%** |
+
+**Results**
+
+The uncertainty **`r d[,"U_Def"]`~rel~=`r U_ilc`%** determined from an interlaboratory comparison (ILC) is \textcolor{`r ifelse(U_ilc > U_lts, "green", "red")`}{`r ifelse(U_ilc > U_lts, "larger", "smaller")`} than the uncertainty value **`r d[,"U_Def"]`~rel~=`r U_lts`%** determined within the LTS monitoring.
+
+The long-term stability for the reference material **`r d[,"RM"]`** with its property of **`r d[,"KW_Def"]`** was determined as \textcolor{`r ifelse(lts > 60, "green", "red")`}{`r lts`} month (`r names(lts)`).
+
+\textcolor{gray}{All measurement data and potential comments are enlisted on the following page.}
+
+\pagebreak
+
+\captionsetup[table]{labelformat=empty}
+\scriptsize
+
+```{r datatable, echo=FALSE, results='asis'}
+  opts <- options(knitr.kable.NA = "")
+#\rowcolors{2}{gray!25}{white}
+  # table of values (potentially modified)
+  com <- v[,"Comment"]
+  out <- v[,1:3]
+  # escape special LaTeX characters in `out`
+  for (i in 1:ncol(out)) {
+    if (mode(out[,i])=="character") out[,i] <- knitr:::escape_latex(x = out[,i])
+  }
+  if (any(!is.na(com))) {
+    idx <- com
+    idx[!is.na(com)] <- 1:sum(!is.na(com))
+    for (k in which(!is.na(com))) {
+      out$File[k] <- paste0(out$File[k], "\\textsuperscript{", idx[k], "}")
+    }
+    com <- com[!is.na(com)]
+    # escape special LaTeX characters in `com`
+    com <- knitr:::escape_latex(x = com)
+    com <- data.frame("Comments for Tab.1"=sapply(1:length(com), function(i) { paste0("\\textsuperscript{", i, "} ", com[i]) }), check.names = FALSE)
+  } else {
+    com <- NULL
+  }
+  n <- ceiling(nrow(out)/2)
+  np <- ceiling(n/l_max)
+  tab <- vector("list", np)
+  for (p in 1:np) {
+    tab[[p]] <- vector("list", 2)
+    for (i in 1:2) {
+      tab[[p]][[i]] <- out[0:min(l_max, nrow(out)),]
+      out <- out[-(1:min(l_max, nrow(out))),]
+      if (nrow(tab[[p]][[i]])==0) { tab[[p]][[i]] <- NULL }
+    }
+  }
+  for (p in 1:np) {
+    # we need 'escape=FALSE' to allow superscript for comments but it might lead to problems
+    print(knitr::kable(x=tab[[p]], format="latex", row.names = FALSE, escape=FALSE, caption = paste0("Tab.1 LTS measurement values", ifelse(p>1, " (continued)", "")), booktabs = TRUE))
+    #, position = "!b"
+    if (p==np & !is.null(com)) {
+      #cat('\\rowcolors{1}{white}{white}')
+      print(knitr::kable(x=com, format="latex", row.names = FALSE, escape=FALSE, caption = " ", booktabs = TRUE, toprule = "", midrule = "", bottomrule = "", linesep = "", centering = FALSE, position = "!t"))
+      #print(knitr::kable(x=com, format="pipe", row.names = FALSE, escape=FALSE, caption = " ", position = "t"))
+    }
+  }
+  
+```

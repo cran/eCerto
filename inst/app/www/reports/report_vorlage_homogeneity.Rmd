@@ -1,0 +1,109 @@
+---
+title: '&nbsp;'
+title-meta: "Homogeneity-Report"
+params:
+  Homogeneity: NA
+  xlab: NA
+  precision: NA
+  adjust: NA
+output:
+  html_document:
+    df_print: paged
+---
+
+***Note!*** 
+This is a general report template. Specific layouts can be generated on demand.
+
+---
+
+## ***eCerto*** Report
+
+**Date: `r format(Sys.time(), '%d %B, %Y')`**
+
+### Modul: Homogeneity
+
+```{r data_prep, echo=FALSE, message=FALSE}
+# get a local representation of all data provided by Shiny
+testing <- length(params$Homogeneity)==1L && (is.na(params$Homogeneity) | params$Homogeneity=="NA")
+if (testing) {
+  H <- eCerto::CRM001[["Homogeneity"]]
+  xlab <- "Flasche"
+  an <- unique(as.character(H[["data"]][,"analyte"]))
+  prec <- 5:3; names(prec) <- an
+  adjust <- TRUE
+} else {
+  H <- params$Homogeneity
+  xlab <- params$xlab
+  prec <- params$precision
+  if (length(prec)==0) {
+    an <- unique(as.character(H[["data"]][,"analyte"]))
+    prec <- rep(4, length(an))
+    names(prec) <- an
+  }
+  adjust <- params$adjust
+}
+H[["data"]] <- eCerto:::checkHdata(x = H[["data"]])
+sa <- interaction(H[["data"]][,"analyte"], H[["data"]][,"H_type"], drop = TRUE)
+prec2 <- sapply(levels(sa), function(lsa) {
+  unname(prec[sapply(names(prec), function(x) { substr(lsa, 1, nchar(x))==x })])
+})
+# get figure width in pixel
+figs_w <- sapply(levels(sa), function(a) {
+  eCerto:::calc_bxp_width(n = length(levels(factor(H[["data"]][sa==a,"Flasche"]))), w_axes = 48, w_point = 40)
+})
+# convert width to inch on screen
+figs_w <- figs_w/72
+# normalize to max width
+max_width <- max(960/72, figs_w)
+figs_w <- figs_w/max_width
+# calculate Tab.H1
+df <- eCerto:::prepTabH1(x = H[["data"]], adjust = adjust)
+# get correct col name for P values
+P_col <- ifelse("P" %in% colnames(df), "P", "P_adj")
+```
+
+This is the table of uncertainties associated with homogeneity:
+
+```{r tab_H1, echo=FALSE, comment=NA, message=FALSE, warning=FALSE}
+if (knitr::is_html_output()) {
+  eCerto:::styleTabH1(
+    x = df, 
+    mt = data.frame("analyte"=unique(as.character(df[,"analyte"]))), 
+    prec = prec,
+    output = "dt"
+  )
+} else if (knitr::is_latex_output()) {
+  knitr::kable(df, row.names=FALSE, format="latex", format.args = list(decimal.mark = "."))
+}
+```
+
+`r paste(ifelse(any(df[,P_col]<=0.05), "Not all", "All"), "analytes are homogenous between bottles.")`
+
+`r ifelse(length(levels(df[,"analyte"]))>=2, "These are the individual Homogeneity boxplots:", "This is the Homogeneity boxplot:")`
+
+```{r fig_H1, echo=FALSE, comment=NA, message=FALSE, fig.width=max_width}
+widths <- diff(c(0,sort(unique(figs_w)),1))
+mat <- matrix(0, nrow = length(figs_w), ncol = length(widths))
+# make individual plots to allow separate inclusion in i.e. Word reports
+for (i in 1:nrow(mat)) {
+  mat[i,figs_w[i]>=cumsum(widths)] <- 1
+  layout(mat = mat[i,,drop=FALSE], widths = widths)
+  a <- levels(sa)[i]
+  try(eCerto:::prepFigH1(x = H[["data"]], sa = a, prec = prec2[a], xlab = xlab))
+}
+```
+
+This is the table of (non rounded) input data:
+
+```{r tab_H0, echo=FALSE, comment=NA}
+df <- H[["data"]]
+if (length(unique(df[,"H_type"]))==1) df <- df[,colnames(df) != "H_type"]
+if (xlab != "Flasche" & any(colnames(df)=="Flasche")) colnames(df)[colnames(df)=="Flasche"] <- xlab
+if (knitr::is_html_output()) {
+  DT::datatable(data = df, rownames = NULL, options = list(dom = "t", paging = FALSE))
+} else if (knitr::is_latex_output()) {
+  knitr::kable(df, row.names=FALSE, format="latex", format.args = list(decimal.mark = "."))
+}
+```
+
+End of Report.

@@ -1,0 +1,28 @@
+## Homogeneity
+
+```{r child = 'homogeneity_dataupload.Rmd'}
+```
+
+### Homogeneity statistics
+
+The uncertainty contribution of the Homogeneity measurements `u_bb` (uncertainty between bottles) is calculated 
+for each analyte based on variance obtained by an ANOVA and is transferred to a user specified column in 
+the material table of the certification module (**Tab.C3**).
+
+***Note!***
+Values for `u_bb` can be transferred to **Tab.C3** in case that matching analyte names are present 
+(analyte names are depicted in red if not found).
+
+
+```{r child = 'homogeneity_boxplot.Rmd'}
+```
+
+```{r child = 'homogeneity_uncertainty.Rmd'}
+```
+
+### Homogeneity report
+
+Figures and tables can currently be exported in HTML format. 
+
+***Note!***
+Report layout and format are currently under debate and might change in the future depending on user demand.

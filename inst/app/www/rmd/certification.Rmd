@@ -1,0 +1,25 @@
+## Certification
+
+```{r child = 'certification_dataupload.Rmd'}
+```
+
+```{r child = 'certification_analyte_options.Rmd'}
+```
+
+```{r child = 'certification_laboratoryStatistics.Rmd'}
+```
+
+```{r child = 'certification_laboratoryStatistics_options.Rmd'}
+```
+
+```{r child = 'certification_meanDistribution.Rmd'}
+```
+
+```{r child = 'certification_boxplot.Rmd'}
+```
+
+```{r child = 'certification_report.Rmd'}
+```
+
+```{r child = 'certification_tests.Rmd'}
+```

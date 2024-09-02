@@ -1,0 +1,69 @@
+---
+title: "*eCerto* (Statistics for CRM production)"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+    embed-resources: true
+    standalone: true
+---
+
+
+```{css, eval = TRUE, echo = FALSE}
+
+.tocify-header {
+  text-indent: initial;
+}
+
+.tocify-subheader > .tocify-item {
+  text-indent: initial;
+  padding-left: 25px;
+}
+
+.tocify-subheader .tocify-subheader > .tocify-item {
+  text-indent: initial;
+  padding-left: 50px;
+}
+
+.tocify-subheader .tocify-subheader .tocify-subheader > .tocify-item {
+  text-indent: initial;
+  padding-left: 60px;
+}
+```
+
+<style>
+div.figcaption {
+  font-size: 0.8em;
+  background: rgba(0, 0, 0, 0.04);
+  padding-top: 2px;
+  padding-bottom: 2px;
+  margin-top: 4px;
+  margin-bottom: 10px;
+}
+</style>
+
+```{r child = 'start.Rmd'}
+```
+
+```{r child = 'certification.Rmd'}
+```
+
+```{r child = 'homogeneity.Rmd'}
+```
+
+```{r child = 'stability.Rmd'}
+```
+
+```{r child = 'certified_values.Rmd'}
+```
+
+---
+
+```{r child = 'lts.Rmd'}
+```
+
+```{r child = 'validation.Rmd'}
+```

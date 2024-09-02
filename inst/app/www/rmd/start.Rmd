@@ -1,0 +1,7 @@
+## General information
+
+```{r child = 'start_purpose.Rmd'}
+```
+
+```{r child = 'start_gethelp.Rmd'}
+```

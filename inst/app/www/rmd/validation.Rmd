@@ -1,0 +1,43 @@
+## Method validation
+
+***Note!***
+The Validation module is an add-on to *eCerto*. It is not required to compute CRM
+statistics. It is ment to quickly validate working area and linearity of a newly
+developed analytical method. As it is currently work-in-progress, available
+options and output format might change in the future.
+
+
+```{r child = 'v_datapreparation.Rmd'}
+```
+
+```{r child = 'v_dataupload.Rmd'}
+```
+
+```{r child = 'v_fig_V1.Rmd'}
+```
+
+```{r child = 'v_tab_V1.Rmd'}
+```
+
+```{r child = 'v_trueness.Rmd'}
+```
+
+```{r child = 'v_precision.Rmd'}
+```
+
+```{r child = 'v_uncertainty.Rmd'}
+```
+
+```{r child = 'v_formula_collection.Rmd'}
+```
+
+### Validation report and data backup
+
+The user can export a report, in HTML or docx format, containing all imported, 
+edited and calculated data and figures.
+
+For later reference, all data and parameters can be stored (and reimported) in an
+RData file.
+
+<br/>
+<br/>
