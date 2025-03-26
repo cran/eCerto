@@ -16,7 +16,7 @@
 #' @examples
 #' if (interactive()) {
 #'   shiny::shinyApp(
-#'     ui = shiny::fluidPage(
+#'     ui = bslib::page_fluid(
 #'       shinyjs::useShinyjs(),
 #'       eCerto:::m_materialtabelleUI(id = "test")
 #'     ),
@@ -37,10 +37,15 @@ m_materialtabelleUI <- function(id, sidebar_width = 320) {
   #wb <- "50px"
   bslib::card(
     #min_height = 500, max_height = 600,
+    id = ns("tab_C3_panel"),
     fill = FALSE,
     bslib::card_header(
+      id = ns("tab_C3_panel_body"),
       class = "d-flex justify-content-between",
-      shiny::strong(shiny::actionLink(inputId = ns("tabC3head"), label = "Tab.C3 - Certified values within material")),
+      shiny::div(
+        shiny::strong(shiny::actionLink(inputId = ns("tabC3head"), label = "Tab.C3 - Certified values within material")),
+        shiny::actionButton(inputId = ns("btn"), label = NULL, icon = shiny::icon("compress-arrows-alt"), style = "border: none; padding-left: 5px; padding-right: 5px; padding-top: 0px; padding-bottom: 0px;")
+      ),
       shiny::div(
         shiny::div(
           style = "float: right; margin-left: 15px;",
@@ -50,10 +55,21 @@ m_materialtabelleUI <- function(id, sidebar_width = 320) {
           style = "float: right; margin-left: 15px;",
           modify_FUcols_UI(id = ns("FUcols"))
         ),
+        shiny::div(
+          style = "float: right; margin-left: 15px;",
+          # Report-Section
+          m_reportUI(ns("report"))
+        ),
+        shiny::div(
+          style = "float: right; margin-left: 15px;",
+          # Analyte-Options
+          m_analyteUI(ns("analyteModule"))
+        ),
         shiny::actionButton(inputId = ns("clear_FU_cols"), label = "Remove F/U cols without effect")
       )
     ),
     bslib::card_body(
+      id = ns("body"),
       shiny::div(DT::DTOutput(ns("matreport")))
     )
   )
@@ -65,7 +81,21 @@ m_materialtabelleServer <- function(id, rv) {
   shiny::moduleServer(id, function(input, output, session) {
     ns <- shiny::NS(id)
 
+    # FU-col module
     modify_FUcols_Server(id = "FUcols", mt = mater_table)
+
+    # report module
+    m_reportServer(id = "report", rv = rv)
+
+    # Analyte options
+    m_analyteServer(id = "analyteModule", rv = rv)
+
+    shiny::observeEvent(input$btn, {
+      x <- input$btn %% 2 == 0
+      shinyjs::toggleElement(id = "body", condition = x)
+      shiny::updateActionButton(inputId = "btn", icon = shiny::icon(ifelse(x, "compress-arrows-alt", "expand-arrows-alt")))
+    }, ignoreInit = TRUE)
+
 
     # use err_txt to provide error messages to the user
     err_txt <- shiny::reactiveVal(NULL)
@@ -226,9 +256,6 @@ m_materialtabelleServer <- function(id, rv) {
         mean(sapply(split(data[, "value"], data[, "Lab"]), mean, na.rm = T))
       )
     })
-    shiny::observeEvent(cert_mean(), {
-      setValue(rv, c("Certification_processing", "cert_mean"), cert_mean())
-    })
 
     # calculate cert_sd
     cert_sd <- shiny::reactive({
@@ -246,9 +273,6 @@ m_materialtabelleServer <- function(id, rv) {
         stats::sd(sapply(split(data[, "value"], data[, "Lab"]), mean, na.rm = T))
       )
     })
-    shiny::observeEvent(cert_sd(), {
-      setValue(rv, c("Certification_processing", "cert_sd"), cert_sd())
-    })
 
     # update mt
     shiny::observeEvent(mater_table(), {
@@ -259,7 +283,7 @@ m_materialtabelleServer <- function(id, rv) {
       }
     })
 
-    # when an Analyte-tab was selected --> update materialtabelle
+    # when an Analyte was selected --> update materialtabelle
     # TODO Check that analyte-column is unique
     # in case mater table has been initiated...
     # shiny::observeEvent(c_fltData(),{
@@ -267,10 +291,19 @@ m_materialtabelleServer <- function(id, rv) {
       shiny::req(c_fltData())
       an <- as.character(c_fltData()[1, "analyte"])
       if (!is.null(mater_table()) && an %in% mater_table()[, "analyte"]) {
-        e_msg(paste("update initiated for", an))
-        update_reactivecell(r = mater_table, colname = "mean", analyterow = an, value = cert_mean())
-        update_reactivecell(r = mater_table, colname = "sd", analyterow = an, value = cert_sd())
-        update_reactivecell(r = mater_table, colname = "n", analyterow = an, value = n())
+        i <- which(mater_table()[, "analyte"]==an)
+        if (!identical(unname(cert_mean()), mater_table()[i,2])) {
+          e_msg(paste("update \u00B5_c for", an))
+          update_reactivecell(r = mater_table, colname = "mean", analyterow = an, value = cert_mean())
+        }
+        if (!identical(unname(cert_sd()), mater_table()[i,4])) {
+          e_msg(paste("update sd for", an))
+          update_reactivecell(r = mater_table, colname = "sd", analyterow = an, value = cert_sd())
+        }
+        if (!identical(unname(n()), mater_table()[i,5])) {
+          e_msg(paste("update n for", an))
+          update_reactivecell(r = mater_table, colname = "n", analyterow = an, value = n())
+        }
       }
     })
 
@@ -341,12 +374,13 @@ m_materialtabelleServer <- function(id, rv) {
             e_msg(paste("setting", an, "as confirmed"))
             tmp <- getValue(rv, c("General", "apm"))
             tmp[[an]][["confirmed"]] <- TRUE
-            setValue(rv, c("General", "apm"), tmp)
+            shiny::isolate(setValue(rv, c("General", "apm"), tmp))
           }
           if (i != selected_row_idx$row) {
             # update index
             e_msg("input$matreport_rows_selected - setting selected_row_idx")
             selected_row_idx$row <- i
+            rv$cur_an <- an
           } else {
             if (is.null(rv$cur_an) || rv$cur_an != an) {
               e_msg("setting rv$cur_an")

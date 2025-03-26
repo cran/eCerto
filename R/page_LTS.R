@@ -1,11 +1,84 @@
 #' @title page_LTS.
 #' @description Modul for LongTermStability Monitoring as currently (2021) used by Carsten Prinz.
 #' @param id Name when called as a module in a shiny app.
+#' @param test_data Provide test_data file to module.
 #' @return nothing
+#' @examples
+#' if (interactive()) {
+#'   shiny::shinyApp(
+#'     ui = bslib::page_fluid(
+#'       shinyjs::useShinyjs(),
+#'       eCerto:::m_longtermstabilityUI(id = "test")
+#'     ),
+#'     server = function(input, output, session) {
+#'       fl <- "C:/Users/jlisec/Documents/Projects/BAMTool_Backup/Testdaten/TS5/LTS_BAM-B003.xlsx"
+#'       eCerto:::m_longtermstabilityServer(id = "test", test_data = fl)
+#'     }
+#'   )
+#' }
 #' @noRd
 #' @keywords internal
 m_longtermstabilityUI <- function(id) {
   ns <- shiny::NS(id)
+
+  tab_L1_card <- bslib::card(
+    id = ns("tab_L1_panel"),
+    bslib::card_header(
+      class = "d-flex justify-content-between",
+      shiny::actionLink(inputId = ns("TabL1_link"), label = "Tab.L1 - LTS data"),
+      shinyWidgets::dropdownButton(
+        label = "Add data point", circle = FALSE, width = "100%", inline = TRUE,
+        shiny::numericInput(inputId = ns("LTS_newPoint_Val"), label = "Value", value = 0),
+        shiny::dateInput(inputId = ns("LTS_newPoint_Date"), label = "Date"),
+        shiny::textInput(inputId = ns("LTS_newPoint_File"), label = "File"),
+        shiny::textInput(inputId = ns("LTS_newPoint_Comment"), label = "Comment"),
+        shiny::actionButton(inputId = ns("LTS_newPoint_Apply"), label = "Add data")
+      )
+    ),
+    bslib::card_body(shiny::div(DT::DTOutput(outputId = ns("tab_L1"))))
+  )
+
+  fig_L1_card <- bslib::card(
+    id = ns("fig_L1_panel"),
+    full_screen = TRUE,
+    min_height = "460px",
+    bslib::card_header(
+      class = "d-flex justify-content-between",
+      shiny::actionLink(inputId = ns("FigL1_link"), label = "Fig.L1 - LTS calculation"),
+      shiny::div(
+        shiny::div(style = "float: left; margin-left: 15px;", shinyWidgets::pickerInput(inputId = ns("LTS_sel_KW"), label = NULL, choices = "", width = "200px")),
+        shiny::div(style = "float: left; margin-left: 15px;", shinyWidgets::dropdownButton(
+          inputId = ns("btn_Comment"), label = "Comment or Filter", circle = FALSE, width = "300px", inline = TRUE, right=FALSE,
+          shinyjs::disabled(shiny::textInput(inputId = ns("datacomment"), label = "Comment text", value = "", placeholder = "Select point in Fig.L1 or row in Tab.L1 and modify comment")),
+          shiny::checkboxInput(inputId = ns("dataflt"), label = "Filter datapoint", value = FALSE)
+          #shiny::actionButton(inputId = ns("LTS_ApplyNewComment"), label = "Add comment")
+        )),
+        shiny::div(style = "float: left; margin-left: 15px; text-align: right; width: 132px;", shiny::checkboxInput(inputId = ns("LTS_opt_show_ci"), label = shiny::HTML("Use CI<sub>95</sub> (slope)"), value = TRUE))
+      )
+    ),
+    bslib::card_body(
+      bslib::layout_sidebar(
+        sidebar = bslib::sidebar(
+          position = "right", open = "open", width = "340px",
+          DT::dataTableOutput(ns("LTS_def"))
+        ),
+        bslib::layout_columns(
+          #shiny::div(
+            #style = "position:relative",
+            shiny::plotOutput(ns("LTS_plot1_1"), height = "450px", click = ns("plot1_click"), hover = ns("plot1_hover")),
+            #uiOutput(ns("hover_info")),
+            shiny::plotOutput(ns("LTS_plot1_2"), height = "450px")
+          #)
+        )
+      )
+    ),
+    bslib::card_footer(
+      class = "d-flex justify-content-between",
+      shiny::downloadButton(ns("Report"), label = "Download PDF Report"),
+      shiny::div(id = ns("LTS_selected_point"), shiny::HTML("Selected data point: none")),
+      shiny::downloadButton(ns("LTS_Save"), label = "Download LTS Data Backup")
+    )
+  )
 
   shiny::tagList(
     shiny::conditionalPanel(
@@ -23,80 +96,12 @@ m_longtermstabilityUI <- function(id) {
     shiny::conditionalPanel(
       condition = "output.LTS_fileUploaded == true",
       ns = ns, # namespace of current module
-      shiny::fluidRow(
-        shiny::column(
-          width = 3,
-          sub_header(
-            txt = shiny::actionLink(
-              inputId = ns("TabL1_link"),
-              label = "Tab.L1 - Long Term Stability measurement data"
-            )
-          ),
-          DT::dataTableOutput(ns("LTS_vals"))
-        ),
-        shiny::column(
-          width = 9,
-          # shiny::fluidRow(
-          #   shiny::column(
-          #     width = 12,
-          DT::dataTableOutput(ns("LTS_def")),
-          #   ), style = "margin-bottom: 15px;"
-          # ),
-          shiny::wellPanel(
-            shiny::fluidRow(
-              shiny::column(2, shiny::uiOutput(ns("LTS_sel_KW"))),
-              shiny::tags$style(type = "text/css", "#lts-Report {margin-top:-1%;}"),
-              shiny::column(
-                width = 2,
-                shiny::checkboxGroupInput(
-                  inputId = ns("LTS_opt"), label = NULL,
-                  choiceNames = list("Show property values", shiny::HTML("Use CI<sub>95</sub> (slope)")),
-                  choiceValues = list("show_property_values", "show_ci"),
-                  selected = c("show_property_values", "show_ci")
-                )
-              ),
-              shiny::column(6, DT::dataTableOutput(ns("LTS_NewVal"))),
-              shiny::tags$style(type = "text/css", "#lts-LTS_NewVal {margin-top:-2%;}"),
-              shiny::column(2, shiny::strong("New Entry"), shiny::p(), shiny::actionButton(inputId = ns("LTS_ApplyNewValue"), label = "Add data")),
-              shiny::tags$style(type = "text/css", "#lts-LTS_ApplyNewValue {margin-top:-1%;}")
-            ),
-            shiny::fluidRow(
-              shiny::column(2, shiny::strong("Download Report"), shiny::p(), shiny::downloadButton(ns("Report"))),
-              shiny::column(2, shiny::strong("Save LTS Data"), shiny::p(), shiny::downloadButton(ns("LTS_Save"), label = "Backup")),
-              shiny::column(
-                width = 6,
-                shinyjs::disabled(
-                  shiny::textInput(
-                    inputId = ns("datacomment"),
-                    label = "data comment",
-                    value = "",
-                    placeholder = "select point or row, enter comment and confirm"
-                  )
-                )
-              ),
-              shiny::column(2, shiny::strong("New Comment"), shiny::p(), shiny::actionButton(inputId = ns("LTS_ApplyNewComment"), label = "Add comment"))
-            )
-          ),
-          shiny::fluidRow(
-            shiny::div(
-              style = "float: left; width: 45%; max-width: 290px; padding-left: 15px; margin-top: 10px",
-              shiny::strong(
-                shiny::actionLink(
-                  inputId = ns("FigL1_link"),
-                  label = "Fig.L1 - Long Term Stability calculation"
-                )
-              ),
-            ) # ,
-            # shiny::div(style = "float: left; width: 25%; max-width: 160px; padding-left: 15px;", shiny::checkboxInput(inputId = ns("show_ci"), label = shiny::HTML("Use CI<sub>95</sub> (slope)"), value = FALSE)),
-            # shiny::div(style = "float: left; width: 30%; max-width: 210px; padding-left: 15px;", shiny::checkboxInput(inputId = ns("show_plot_L3"), label = shiny::HTML("Show running predictor plot"), value = FALSE))
-          ),
-          # shiny::fluidRow(shiny::column(12, shiny::plotOutput(ns("LTS_plot1_1"), height = "450px", click = ns("plot1_click"), hover = ns("plot1_hover")))),
-          # shiny::fluidRow(shiny::column(12, shiny::plotOutput(ns("LTS_plot1_2"), height = "450px"))),
-          # shiny::fluidRow(shiny::column(12, shiny::plotOutput(ns("LTS_plot2"), height = "450px")))
-          shiny::fluidRow(
-            shiny::column(6, shiny::plotOutput(ns("LTS_plot1_1"), height = "450px", click = ns("plot1_click"), hover = ns("plot1_hover"))),
-            shiny::column(6, shiny::plotOutput(ns("LTS_plot1_2"), height = "450px"))
-          )
+      bslib::layout_columns(
+        tab_L1_card,
+        fig_L1_card,
+        col_widths =  bslib::breakpoints(
+          sm = c(12, 12),
+          xl = c(3, 9)
         )
       )
     ) # conditionalPanel
@@ -105,102 +110,95 @@ m_longtermstabilityUI <- function(id) {
 
 #' @noRd
 #' @keywords internal
-m_longtermstabilityServer <- function(id) {
+m_longtermstabilityServer <- function(id, test_data = NULL) {
   shiny::moduleServer(id, function(input, output, session) {
-    datalist <- shiny::reactiveValues("lts_data" = NULL, "comment" = NULL)
+
+    lts <- shiny::reactiveValues(
+      "data" = NULL,
+      "KWs" = NULL,
+      "tab_L1" = NULL
+    )
+
+    # i() will provide the currently selected KW from the list as a numeric index throughout Server
+    i <- shiny::reactiveVal(NULL)
 
     LTS_Data <- shiny::reactive({
-      if (!is.null(input$LTS_input_file)) {
-        file.type <- tools::file_ext(input$LTS_input_file$datapath)
+      if (!is.null(input$LTS_input_file) | !is.null(test_data)) {
+        fl_path <- ifelse(!is.null(test_data), test_data, input$LTS_input_file$datapath[1])
+        file.type <- tools::file_ext(fl_path)
         if (!tolower(file.type) %in% c("rdata", "xls", "xlsx")) {
           shinyWidgets::show_alert(title = "Wrong Filetype?", text = "Please select an RData file or an Excel file.", type = "warning")
           return(NULL)
         }
         if (tolower(file.type) == "rdata") {
-          tryCatch(
-            {
-              load(input$LTS_input_file$datapath[1])
-            },
-            error = function(e) {
-              stop(shiny::safeError(e))
-            }
-          )
-          if (!exists("LTS_dat")) {
-            warning("Did load RData backup but could not find object 'LTS_dat' inside.")
-            LTS_dat <- NULL
-          }
+          tmp_env <- new.env()
+          tryCatch({ load(fl_path, envir = tmp_env )}, error = function(e) { stop(shiny::safeError(e)) })
+          if (is.null(get0("LTS_dat", tmp_env))) { e_msg("Did load RData file but could not find object 'LTS_dat' inside.") }
+          LTS_dat <- get0("LTS_dat", tmp_env)
         } else {
-          LTS_dat <- read_lts_input(file = input$LTS_input_file$datapath[1])
-          check_validity <- TRUE
-          i <- 0
-          while (check_validity & i < length(LTS_dat)) {
-            for (i in 1:length(LTS_dat)) {
-              def_cols <- c("RM", "KW", "KW_Def", "KW_Unit", "CertVal", "U", "U_Def", "Device", "Method", "Coef_of_Var", "acc_Datasets")
-              check_def_cols <- def_cols %in% colnames(LTS_dat[[i]][["def"]])
-              val_cols <- c("Value", "Date", "File")
-              check_val_cols <- val_cols %in% colnames(LTS_dat[[i]][["val"]])
-              if (!all(check_def_cols)) {
-                warn_txt <- paste0("Can't find the following columns in input file", i, " 'definition' part: ", paste(def_cols[!check_def_cols], collapse = ", "))
-                shinyWidgets::show_alert(title = "Warning", text = warn_txt, type = "warning")
-                LTS_dat[[i]][["def"]] <- cbind(LTS_dat[[i]][["def"]], as.data.frame(matrix(NA, ncol = sum(!check_def_cols), nrow = 1, dimnames = list(NULL, def_cols[!check_def_cols]))))
-              }
-              if (!all(check_val_cols)) {
-                warn_txt <- paste0("Can't find the following columns in input file", i, " 'definition' part: ", paste(val_cols[!check_val_cols], collapse = ", "))
-                shinyWidgets::show_alert(title = "Warning", text = warn_txt, type = "warning")
-              }
-              if (!"Comment" %in% colnames(LTS_dat[[i]][["val"]])) LTS_dat[[i]][["val"]] <- cbind(LTS_dat[[i]][["val"]], "Comment" = as.character(rep(NA, nrow(LTS_dat[[i]][["val"]]))))
-              if (!inherits(LTS_dat[[i]][["val"]][, "Date"], "Date")) {
-                LTS_dat[[i]][["val"]][, "Date"] <- as.Date.character(LTS_dat[[i]][["val"]][, "Date"], tryFormats = c("%Y-%m-%d", "%d.%m.%Y", "%Y/%m/%d"))
-              }
-              shiny::validate(shiny::need(inherits(LTS_dat[[i]][["val"]][, "Date"], "Date"), "Sorry, could not convert column 'Date' into correct format."))
-              shiny::validate(shiny::need(LTS_dat[[i]][["def"]][, "U_Def"] %in% c("1s", "2s", "CI", "1sx", "2sx"), "Sorry, unexpected value in 'U_Def'. Allowed: '1s', '2s', 'CI', '1sx' and '2sx'. Please check."))
-              LTS_dat[[i]][["def"]] <- LTS_dat[[i]][["def"]][, def_cols]
-              LTS_dat[[i]][["val"]] <- LTS_dat[[i]][["val"]][, c(val_cols, "Comment")]
+          LTS_dat <- read_lts_input(file = fl_path)
+        }
+        # perform checks
+        check_validity <- TRUE
+        i <- 0
+        while (!is.null(LTS_dat) && check_validity & i < length(LTS_dat)) {
+          for (i in 1:length(LTS_dat)) {
+            def_cols <- c("RM", "KW", "KW_Def", "KW_Unit", "CertVal", "U", "U_Def", "Device", "Method", "Coef_of_Var", "acc_Datasets")
+            check_def_cols <- def_cols %in% colnames(LTS_dat[[i]][["def"]])
+            val_cols <- c("Value", "Date", "File")
+            check_val_cols <- val_cols %in% colnames(LTS_dat[[i]][["val"]])
+            if (!all(check_def_cols)) {
+              warn_txt <- paste0("Can't find the following columns in input file", i, " 'definition' part: ", paste(def_cols[!check_def_cols], collapse = ", "))
+              shinyWidgets::show_alert(title = "Warning", text = warn_txt, type = "warning")
+              LTS_dat[[i]][["def"]] <- cbind(LTS_dat[[i]][["def"]], as.data.frame(matrix(NA, ncol = sum(!check_def_cols), nrow = 1, dimnames = list(NULL, def_cols[!check_def_cols]))))
             }
+            if (!all(check_val_cols)) {
+              warn_txt <- paste0("Can't find the following columns in input file", i, " 'definition' part: ", paste(val_cols[!check_val_cols], collapse = ", "))
+              shinyWidgets::show_alert(title = "Warning", text = warn_txt, type = "warning")
+            }
+            if (!"Comment" %in% colnames(LTS_dat[[i]][["val"]])) {
+              LTS_dat[[i]][["val"]] <- cbind(LTS_dat[[i]][["val"]], "Comment" = as.character(rep(NA, nrow(LTS_dat[[i]][["val"]]))))
+            } else {
+              LTS_dat[[i]][["val"]][which(LTS_dat[[i]][["val"]][,"Comment"] == ""),"Comment"] <- NA
+            }
+            if (!"Filter" %in% colnames(LTS_dat[[i]][["val"]])) {
+              LTS_dat[[i]][["val"]] <- cbind(LTS_dat[[i]][["val"]], "Filter" = rep(FALSE, nrow(LTS_dat[[i]][["val"]])))
+            }
+            if (!inherits(LTS_dat[[i]][["val"]][, "Date"], "Date")) {
+              LTS_dat[[i]][["val"]][, "Date"] <- as.Date.character(LTS_dat[[i]][["val"]][, "Date"], tryFormats = c("%Y-%m-%d", "%d.%m.%Y", "%Y/%m/%d"))
+            }
+            if (!inherits(LTS_dat[[i]][["val"]][, "Date"], "Date")) e_msg("Sorry, could not convert column 'Date' into correct format.")
+            if (!LTS_dat[[i]][["def"]][, "U_Def"] %in% c("1s", "2s", "CI", "1sx", "2sx")) e_msg("Sorry, unexpected value in 'U_Def'. Allowed: '1s', '2s', 'CI', '1sx' and '2sx'. Please check.")
+            shiny::validate(shiny::need(inherits(LTS_dat[[i]][["val"]][, "Date"], "Date"), "Sorry, could not convert column 'Date' into correct format."))
+            shiny::validate(shiny::need(LTS_dat[[i]][["def"]][, "U_Def"] %in% c("1s", "2s", "CI", "1sx", "2sx"), "Sorry, unexpected value in 'U_Def'. Allowed: '1s', '2s', 'CI', '1sx' and '2sx'. Please check."))
+            LTS_dat[[i]][["def"]] <- LTS_dat[[i]][["def"]][, def_cols]
+            LTS_dat[[i]][["val"]] <- LTS_dat[[i]][["val"]][, c(val_cols, "Comment", "Filter")]
           }
         }
         return(LTS_dat)
       }
     })
 
-    shiny::observeEvent(input$LTS_opt,
-      {
-        # browser()
-        shinyjs::toggleElement(id = "LTS_def", condition = "show_property_values" %in% input$LTS_opt)
-      },
-      ignoreInit = FALSE,
-      ignoreNULL = FALSE
-    )
-
-
     shiny::observeEvent(LTS_Data(), {
-      datalist[["lts_data"]] <- LTS_Data()
+      lts$data <- LTS_Data()
+      lts$KWs <- sapply(LTS_Data(), function(x) { x[["def"]][, "KW"] })
     })
 
     # upload info used in UI part
     output$LTS_fileUploaded <- shiny::reactive({
-      return(!is.null(datalist$lts_data))
+      return(!is.null(lts$data))
     })
     shiny::outputOptions(output, "LTS_fileUploaded", suspendWhenHidden = FALSE)
 
-    LTS_KWs <- shiny::reactive({
-      shiny::req(datalist$lts_data)
-      sapply(datalist$lts_data, function(x) {
-        x[["def"]][, "KW"]
-      })
-    })
-
-    # i() will provide the currently selected KW from the list as a numeric index throughout Server
-    i <- shiny::reactiveVal(1)
-
-    output$LTS_sel_KW <- shiny::renderUI({
-      shiny::req(LTS_KWs())
-      shiny::selectInput(inputId = shiny::NS(id, "LTS_sel_KW"), label = "Property", choices = LTS_KWs(), selected = shiny::isolate(i()))
+    shiny::observeEvent(lts$KWs, {
+      shinyWidgets::updatePickerInput(inputId = "LTS_sel_KW", choices = lts$KWs, selected = lts$KWs[1])
     })
 
     shiny::observeEvent(input$LTS_sel_KW, {
-      i(which(LTS_KWs() %in% input$LTS_sel_KW))
-    })
+      if (!identical(i(), which(lts$KWs %in% input$LTS_sel_KW))) {
+        i(which(lts$KWs %in% input$LTS_sel_KW))
+      }
+    }, ignoreInit = TRUE)
 
     LTS_new_val <- data.frame(
       "Value" = 0.0,
@@ -208,58 +206,34 @@ m_longtermstabilityServer <- function(id) {
       "File" = as.character("filename"),
       "Comment" = as.character(NA), stringsAsFactors = FALSE
     )
-    LTS_tmp_val <- shiny::reactiveVal(LTS_new_val)
 
     # Data Tables
-    # current LTS values
-    tab_LTSvals <- shiny::reactiveVal(shiny::isolate(datalist[["lts_data"]][[i()]][["val"]][, 1:3]))
     shiny::observeEvent(i(), {
       # select the current set of values based on i() without showing the comments (to save screen space)
-      tab_LTSvals(datalist[["lts_data"]][[i()]][["val"]][, 1:3])
-    })
-    output$LTS_vals <- DT::renderDataTable(
-      {
-        shiny::req(i())
-        # trigger redraw on new value and update reactive Value to this end
-        input$LTS_ApplyNewValue
-        tab_LTSvals(shiny::isolate(datalist[["lts_data"]][[i()]][["val"]][, 1:3]))
-        styleTabL1(x = tab_LTSvals())
-      },
-      server = FALSE
-    )
+      lts$tab_L1 <- lts[["data"]][[i()]][["val"]][, 1:3]
+    }, ignoreInit = TRUE)
+
+    output$tab_L1 <- DT::renderDataTable({
+      shiny::req(lts$tab_L1)
+      styleTabL1(x = lts$tab_L1)
+    }, server = FALSE)
 
     # current LTS definition
-    output$LTS_def <- DT::renderDataTable(
-      {
-        shiny::req(datalist$lts_data)
-        out <- datalist$lts_data[[i()]][["def"]]
-        out[, "Coef_of_Var"] <- formatC(round(out[, "Coef_of_Var"], 4), digits = 4, format = "f")
-        # reorder and rename columns according to wish of Carsten Prinz
-        out <- out[, c("RM", "KW", "KW_Def", "KW_Unit", "CertVal", "U", "U_Def", "Coef_of_Var", "acc_Datasets", "Device", "Method")]
-        colnames(out) <- c("Reference Material", "Property", "Name", "Unit", "Certified value", "Uncertainty", "Uncertainty unit", "Coeff. of Variance", "accepted Datasets", "Device", "Method")
-        return(out)
-      },
-      options = list(paging = FALSE, searching = FALSE, ordering = FALSE, dom = "t"),
-      rownames = NULL
-    )
-
-    # entry table for new datapoint
-    output$LTS_NewVal <- DT::renderDataTable({
-      DT::datatable(
-        data = LTS_new_val,
-        options = list(
-          paging = FALSE, searching = FALSE, ordering = FALSE, dom = "t",
-          columnDefs = list(
-            list("width" = "80px", "targets" = which(!(colnames(LTS_new_val) %in% c("Comment"))) - 1)
-          )
-        ),
-        rownames = NULL, editable = TRUE
-      )
-    })
+    output$LTS_def <- DT::renderDataTable({
+      shiny::req(lts$data, i())
+      out <- lts$data[[i()]][["def"]]
+      out[, "Coef_of_Var"] <- formatC(round(out[, "Coef_of_Var"], 4), digits = 4, format = "f")
+      # reorder and rename columns according to wish of Carsten Prinz
+      out <- out[, c("RM", "KW", "KW_Def", "KW_Unit", "CertVal", "U", "U_Def", "Coef_of_Var", "acc_Datasets", "Device", "Method")]
+      colnames(out) <- c("Reference Material", "Property", "Name", "Unit", "Certified value", "Uncertainty", "Uncertainty unit", "Coeff. of Variance", "accepted Datasets", "Device", "Method")
+      rownames(out) <- out[,"Property"]
+      return(t(out))
+    }, options = list(paging = FALSE, searching = FALSE, ordering = FALSE, dom = "t"))
 
     # helper data.frame containing only Month and Value information of current KW
     d <- shiny::reactive({
-      x <- datalist$lts_data[[i()]]
+      req(lts$data[[i()]])
+      x <- lts$data[[i()]]
       vals <- x[["val"]][, "Value"]
       rt <- x[["val"]][, "Date"]
       mon <- round(calc_time_diff(x = rt, type = "mon", exact = TRUE), 2)
@@ -267,129 +241,144 @@ m_longtermstabilityServer <- function(id) {
     })
 
     # when a row in table was selected (either by user clicking the table or clicking in the plot)
-    shiny::observeEvent(input$LTS_vals_rows_selected,
-      {
-        shiny::req(datalist$lts_data)
-        if (!is.null(input$LTS_vals_rows_selected)) {
-          # when a row is selected in table or plot change title and value
-          sr <- input$LTS_vals_rows_selected # selected row
-          shinyjs::enable(id = "datacomment")
-          shiny::updateTextInput(
-            session = session,
-            inputId = "datacomment",
-            label = paste0("Comment for month ", d()[sr, "mon"], " and value ", d()[sr, "vals"]),
-            value = datalist[["lts_data"]][[i()]][["val"]][[sr, "Comment"]]
-          )
-        } else {
-          # when row gets deselected/ no row is selected
-          shinyjs::disable(id = "datacomment")
-          shiny::updateTextInput(
-            session = session,
-            inputId = "datacomment",
-            label = "Comment",
-            value = NA
-          )
-        }
-      },
-      ignoreNULL = FALSE
-    )
+    shiny::observeEvent(input$tab_L1_rows_selected, {
+      shiny::req(lts$data)
+      if (!is.null(input$tab_L1_rows_selected)) {
+        # when a row is selected in table or plot change title and value
+        sr <- input$tab_L1_rows_selected # selected row
+        comm <- lts[["data"]][[i()]][["val"]][[sr, "Comment"]]
+        shinyjs::enable(id = "datacomment")
+        shinyjs::enable(id = "dataflt")
+        shiny::updateTextInput(session = session, inputId = "datacomment", value = comm)
+        shiny::updateCheckboxInput(inputId = "dataflt", value = lts[["data"]][[i()]][["val"]][sr, "Filter"])
+        if (!is.na(comm)) comm <- paste("<br>Comment:", comm) else comm <- ""
+        shinyjs::html(id = "LTS_selected_point", html = paste0("Selected data point: month ", d()[sr, "mon"], " and value ", round(d()[sr, "vals"],4), comm))
+      } else {
+        # when row gets deselected/ no row is selected
+        shinyjs::disable(id = "datacomment")
+        shiny::updateTextInput(session = session, inputId = "datacomment", value = NA)
+        shinyjs::disable(id = "dataflt")
+        shiny::updateCheckboxInput(inputId = "dataflt", value = FALSE)
+        shinyjs::html(id = "LTS_selected_point", html = "Selected data point: none")
+      }
+    }, ignoreNULL = FALSE)
 
     # Data Figures
     output$LTS_plot1_1 <- shiny::renderPlot({
-      shiny::req(datalist[["lts_data"]], i(), d())
-      input$LTS_ApplyNewValue
+      shiny::req(lts[["data"]], i(), d())
+      input$LTS_newPoint_Apply
+      e_msg("Render LTS_plot1_1")
       # $$minor ToDo$$ plot does not need to be updated if only comment was edited --> test for this situation
       # Careful! If user goes to next comment plot needs to be updated again
-      plot_lts_data(x = datalist$lts_data[[i()]], type = 1)
+      plot_lts_data(x = lts$data[[i()]], type = 1)
       ### if a point in data table is selected --> mark in plot 1
-      sr <- input$LTS_vals_rows_selected
-      if (length(sr)) {
-        graphics::points(x = rep(d()[sr, "mon"], 2), y = rep(d()[sr, "vals"], 2), pch = c(21, 4), cex = 2, col = 5)
+      sr <- input$tab_L1_rows_selected
+      if (length(sr)==1) {
+        graphics::points(x = rep(d()[sr, "mon"], 2), y = rep(d()[sr, "vals"], 2), pch = c(21, 4), cex = 2.5, col = 5)
       }
     })
 
     output$LTS_plot1_2 <- shiny::renderPlot({
-      shiny::req(datalist[["lts_data"]], i())
-      input$LTS_ApplyNewValue
-      # plot_lts_data(x = datalist$lts_data[[i()]], type=ifelse(input$show_ci, 3, 2))
-      plot_lts_data(x = datalist$lts_data[[i()]], type = ifelse("show_ci" %in% input$LTS_opt, 3, 2))
-    })
-
-    output$LTS_plot2 <- shiny::renderPlot({
-      shiny::req(datalist[["lts_data"]], i(), input$show_plot_L3)
-      input$LTS_ApplyNewValue
-      # validate(need(input$show_plot_L3))
-      tmp <- datalist$lts_data[[i()]]
-      if (nrow(tmp[["val"]]) >= 6) {
-        est <- sapply(6:nrow(tmp[["val"]]), function(i) {
-          x <- tmp
-          x[["val"]] <- x[["val"]][1:i, ]
-          plot_lts_data(x = x, type = 0)
-        })
-        x <- calc_time_diff(tmp[["val"]][, "Date"], type = "mon")
-        plot(x = x[-c(1:5)], y = est, xlab = "Measurement Point", ylab = "LTS month estimate (excluding initital 5 values)", xlim = range(x), pch = 24)
+      shiny::req(lts[["data"]], i())
+      input$LTS_newPoint_Apply
+      e_msg("Render LTS_plot1_2")
+      x <- lts$data[[i()]]
+      #remove filtered Values from Fig.L1-2
+      if (any(x[["val"]][,"Filter"])) {
+        x[["val"]] <- x[["val"]][!x[["val"]][,"Filter"],]
       }
+      plot_lts_data(x = x, type = ifelse(input$LTS_opt_show_ci, 3, 2))
     })
 
     # proxy for changing the table
-    proxy <- DT::dataTableProxy("LTS_vals")
+    proxy <- DT::dataTableProxy("tab_L1")
 
     #  when clicking on a point in the plot, select Rows in data table proxy
-    shiny::observeEvent(input$plot1_hover, {
-      p <- input$plot1_hover
-      # browser()
-      # print(shiny::nearPoints(d(), p, xvar = "mon", yvar = "vals", addDist = TRUE, threshold = 10))
-    })
+    # shiny::observeEvent(input$plot1_hover, {
+    #   p <- input$plot1_hover
+    #   #bslib::tooltip()
+    #   # print(shiny::nearPoints(d(), p, xvar = "mon", yvar = "vals", addDist = TRUE, threshold = 10))
+    # })
+
+    # output$hover_info <- renderUI({
+    #   #browser()
+    #   hover <- input$plot1_hover
+    #   point <- shiny::nearPoints(d(), input$plot1_click, xvar = "mon", yvar = "vals", addDist = TRUE, threshold = 10)
+    #   if (nrow(point) == 0) return(NULL)
+    #
+    #   # calculate point position INSIDE the image as percent of total dimensions
+    #   # from left (horizontal) and from top (vertical)
+    #   left_pct <- (hover$x - hover$domain$left) / (hover$domain$right - hover$domain$left)
+    #   top_pct <- (hover$domain$top - hover$y) / (hover$domain$top - hover$domain$bottom)
+    #
+    #   # calculate distance from left and bottom side of the picture in pixels
+    #   left_px <- hover$range$left + left_pct * (hover$range$right - hover$range$left)
+    #   top_px <- hover$range$top + top_pct * (hover$range$bottom - hover$range$top)
+    #
+    #   # create style property fot tooltip
+    #   # background color is set so tooltip is a bit transparent
+    #   # z-index is set so we are sure are tooltip will be on top
+    #   style <- paste0("position:absolute; z-index:100; background-color: rgba(245, 245, 245, 0.85); ", "left:", left_px + 2, "px; top:", top_px + 2, "px;")
+    #
+    #   # actual tooltip created as wellPanel
+    #   wellPanel(
+    #     style = style,
+    #     shiny::p(shiny::HTML(paste0("<b> oint: </b>", rownames(point), "<br/>",
+    #                   "<b> month: </b>", point$mon, "<br/>",
+    #                   "<b> value: </b>", point$vals, "<br/>",
+    #                   "<b> Distance from left: </b>", left_px, "<b>, from top: </b>", top_px)))
+    #   )
+    # })
+
+
+
     #  when clicking on a point in the plot, select Rows in data table proxy
     shiny::observeEvent(input$plot1_click, {
       # 1/3 nearest point to click location
-      a <- shiny::nearPoints(d(), input$plot1_click, xvar = "mon", yvar = "vals", addDist = TRUE, threshold = 10)
+      a <- shiny::nearPoints(d(), input$plot1_click, xvar = "mon", yvar = "vals", addDist = TRUE, threshold = 5)
       # 2/3 index in table
       if (nrow(a) >= 2) {
-        shinyWidgets::show_alert(title = "Warning", text = "More than one data point in proximity to click event. Please cross check with table entry if correct data point is selected.", type = "warning")
+        #shinyWidgets::show_alert(title = "Warning", text = "More than one data point in proximity to click event. Please cross check with table entry if correct data point is selected.", type = "warning")
         a <- a[which.min(a[, "dist_"])[1], ]
       }
       idx <- which(d()$mon == a$mon & d()$vals == a$vals)
       # 3/3
       DT::selectRows(proxy = proxy, selected = idx)
-      DT::selectPage(proxy = proxy, page = (idx - 1) %/% input$LTS_vals_state$length + 1)
-    })
-
-
-    # Edit Value/Information of new datapoint
-    shiny::observeEvent(input[["LTS_NewVal_cell_edit"]], {
-      cell <- input[["LTS_NewVal_cell_edit"]]
-      i <- cell$row
-      j <- 1 + cell$col
-      tmp <- LTS_tmp_val()
-      tmp[i, j] <- DT::coerceValue(val = cell$value, old = tmp[i, j])
-      LTS_tmp_val(tmp)
+      DT::selectPage(proxy = proxy, page = (idx - 1) %/% input$tab_L1_state$length + 1)
     })
 
     # add new value
-    shiny::observeEvent(input$LTS_ApplyNewValue, ignoreNULL = TRUE, ignoreInit = TRUE, {
-      if (input$LTS_ApplyNewValue >= 1) {
-        tmp <- datalist$lts_data[[i()]][["val"]]
-        nval <- LTS_tmp_val()
+    shiny::observeEvent(input$LTS_newPoint_Apply, ignoreNULL = TRUE, ignoreInit = TRUE, {
+      if (input$LTS_newPoint_Apply >= 1) {
+        tmp <- lts$data[[i()]][["val"]]
+        nval <- LTS_new_val
+        nval[1,"Value"] <- input$LTS_newPoint_Val
+        nval[1,"Date"] <- input$LTS_newPoint_Date
+        nval[1,"File"] <- input$LTS_newPoint_File
+        nval[1,"Comment"] <- ifelse(input$LTS_newPoint_Comment=="", as.character(NA), input$LTS_newPoint_Comment)
         if (nval$Date < max(tmp$Date)) {
           shinyWidgets::show_alert(title = "Warning", text = "You added a data point for an earlier date. Resorting the table accordingly.", type = "warning")
           ord <- order(c(tmp$Date, nval$Date))
         } else {
           ord <- 1:(nrow(tmp) + 1)
         }
-        datalist$lts_data[[i()]][["val"]] <- rbind(tmp, nval)[ord, ]
+        lts$data[[i()]][["val"]] <- rbind(tmp, nval)[ord, ]
+        lts$tab_L1 <- lts$data[[i()]][["val"]][, 1:3]
       }
     })
 
-    # add new comment
-    shiny::observeEvent(input$LTS_ApplyNewComment, ignoreNULL = TRUE, ignoreInit = TRUE, {
-      shiny::req(input$LTS_vals_rows_selected)
-      if (input$LTS_ApplyNewComment >= 1) {
-        # comment input is explicitly triggered now to allow deletion of comments as well as to avoid unnecessary update of the plots
-        if (input$datacomment == "") {
-          datalist[["lts_data"]][[i()]][["val"]][input$LTS_vals_rows_selected, "Comment"] <- NA
-        } else {
-          datalist[["lts_data"]][[i()]][["val"]][input$LTS_vals_rows_selected, "Comment"] <- input$datacomment
+    # add new comment and set filter
+    shiny::observeEvent(input$btn_Comment_state, {
+      if (input$btn_Comment_state) {
+        # dont do anything while button is still open
+      } else {
+        if (any(input$tab_L1_rows_selected)) {
+          lts[["data"]][[i()]][["val"]][input$tab_L1_rows_selected, "Comment"] <- ifelse(input$datacomment == "", NA, input$datacomment)
+          sr <- input$tab_L1_rows_selected # selected row
+          comm <- lts[["data"]][[i()]][["val"]][sr, "Comment"]
+          if (!is.na(comm)) comm <- paste("<br>Comment:", comm) else comm <- ""
+          shinyjs::html(id = "LTS_selected_point", html = paste0("Selected data point: month ", d()[sr, "mon"], " and value ", round(d()[sr, "vals"],4), comm))
+          lts[["data"]][[i()]][["val"]][sr, "Filter"] <- input$dataflt
         }
       }
     })
@@ -404,14 +393,18 @@ m_longtermstabilityServer <- function(id) {
         # font files: "BAMKlavika-Light.ttf", "BAMKlavika-Medium.ttf", "BAMKlavika-LightItalic.ttf", "BAMKlavika-MediumItalic.ttf"
 
         # Set up parameters to pass to Rmd document
-        dat <- datalist[["lts_data"]]
-        if (length(dat) >= 2 & i() >= 2) for (j in rev(1:(i() - 1))) dat[j] <- NULL
+        x <- lts[["data"]][i()]
+        # remove filtered values from report (if any)
+        if (any(x[[1]][["val"]][,"Filter"])) {
+          x[[1]][["val"]] <- x[[1]][["val"]][!x[[1]][["val"]][,"Filter"],]
+        }
+        #dat <- lts[["data"]]
+        #if (length(dat) >= 2 & i() >= 2) for (j in rev(1:(i() - 1))) dat[j] <- NULL
         params <- list(
-          "dat" = dat,
+          "dat" = x,
           "logo_file" = logofile,
           "fnc" = list("plot_lts_data" = plot_lts_data)
         )
-
         # Knit the document, passing in the `params` list, and eval it in a
         # child of the global environment (this isolates the code in the document
         # from the code in this app).
@@ -434,11 +427,11 @@ m_longtermstabilityServer <- function(id) {
     # BACKUP
     output$LTS_Save <- shiny::downloadHandler(
       filename = function() {
-        paste0(datalist$lts_data[[i()]][["def"]][, "RM"], ".RData")
+        paste0(lts$data[[i()]][["def"]][, "RM"], ".RData")
       },
       content = function(file) {
         # !! save cant handle reactiveVal object properly. has to be written to local variable first
-        LTS_dat <- datalist[["lts_data"]]
+        LTS_dat <- lts[["data"]]
         save(LTS_dat, file = file)
       },
       contentType = "RData"

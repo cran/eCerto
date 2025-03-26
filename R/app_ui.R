@@ -98,13 +98,19 @@ app_ui <- function(request) {
         shiny::div(style = nps, page_validationUI("Validation"))
       ),
       bslib::nav_panel(
+        title = "DRMD",
+        icon = shiny::icon("angle-right"),
+        value = "tP_DRDM",
+        shiny::div(style = nps, page_DRMDUI("DRMD"))
+      ),
+      bslib::nav_panel(
         title = "Help",
         icon = shiny::icon("angle-right"),
         value = "tP_help",
         shiny::div(
           style = nps,
           # don't render Help page in testing mode
-          if (getOption("shiny.testmode", default = TRUE)) {
+          if (getOption("eCerto.renderHelp", default = TRUE)) {
             shiny::withMathJax(shiny::includeCSS(rmarkdown::render(input = get_local_file("help_start.Rmd"), runtime = c("auto", "shiny", "shinyrmd", "shiny_prerendered")[2])))
           } else {
             shiny::div("No help page because App is in testing mode currently.")

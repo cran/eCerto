@@ -9,6 +9,7 @@
 #' @param slope_of_means Average replicate measurements (same Date) before
 #'     computing linear model and SE of slope.
 #' @param show_legend annotate plot.
+#' @param show_ids show_ids.
 #'
 #' @return The plot function can be used to return only the calculated
 #'     LTS value (in month) with type=0. If type = 1 or 2 the normal or
@@ -29,9 +30,18 @@
 #'
 #' @noRd
 #' @keywords internal
-plot_lts_data <- function(x = NULL, type = 1, t_cert = 0, slope_of_means = FALSE, show_legend = FALSE) {
+plot_lts_data <- function(x = NULL, type = 1, t_cert = 0, slope_of_means = FALSE, show_legend = FALSE, show_ids = FALSE) {
+
   # date estimation is approximate (based on ~30d/month or precisely on 365/12=30.42)
   days_per_month <- 30.41667
+
+  # dont show IDs for day averages
+  if (slope_of_means) show_ids <- FALSE
+
+  # ensure that rownames exist if IDs are to be plotted
+  if (show_ids && is.null(rownames(x[["val"]]))) {
+    rownames(x[["val"]]) <- 1:nrow(x[["val"]])
+  }
 
   # ensure that data is ordered after time
   x[["val"]] <- x[["val"]][order(x[["val"]][, "Date"]), ]
@@ -50,19 +60,20 @@ plot_lts_data <- function(x = NULL, type = 1, t_cert = 0, slope_of_means = FALSE
 
   # get specific data
   vals <- x[["val"]][, "Value"]
+  if (show_ids) names(vals) <- rownames(x[["val"]])
   rt <- x[["val"]][, "Date"]
   mon <- calc_time_diff(rt, type = "day") / days_per_month
 
   # establish linear model
   foo.lm <- stats::lm(vals ~ mon)
-  a <- stats::coef(foo.lm)[1]
-  b <- stats::coef(foo.lm)[2]
+  a <- stats::coef(foo.lm)[1] # <-- intercept
+  b <- stats::coef(foo.lm)[2] # <-- slope
   SE_b <- summary(foo.lm)$coefficients["mon", 2]
   # b.ci <- confint(object = foo.lm, parm = 'mon', level = 0.95)
 
   # extract relevant values from definition part
   U <- x[["def"]][, "U"]
-  ylab <- paste0(x[["def"]][, "KW_Def"], ifelse(is.na(x[["def"]][, "KW"]), "", paste0(" (", x[["def"]][, "KW"], ")")), " [", x[["def"]][, "KW_Unit"], "]")
+  ylab <- paste0(x[["def"]][, "KW_Def"], ifelse(is.na(x[["def"]][, "KW"]) | x[["def"]][, "KW"]==x[["def"]][, "KW_Def"], "", paste0(" (", x[["def"]][, "KW"], ")")), " [", x[["def"]][, "KW_Unit"], "]")
   main <- x[["def"]][, "KW"]
   sub <- x[["def"]][, "U_Def"]
   sub <- ifelse(sub == "U", expression(U[abs]), expression(U))
@@ -80,13 +91,6 @@ plot_lts_data <- function(x = NULL, type = 1, t_cert = 0, slope_of_means = FALSE
   } else {
     com <- rep(NA, nrow(x[["val"]]))
   }
-
-  # if (show_legend) {
-  #   opar <- graphics::par(no.readonly = TRUE)
-  #   on.exit(graphics::par(opar))
-  #   #layout(mat = c(1:2), widths = c(0.7,0.3))
-  #   graphics::par(mar=c(5,4,2,8)+0.1)
-  # }
 
   # generate 'real time window' plot
   if (type == 1) {
@@ -107,7 +111,8 @@ plot_lts_data <- function(x = NULL, type = 1, t_cert = 0, slope_of_means = FALSE
         graphics::legend(x = "topright", fill = grDevices::grey(0.9), legend = expression(s(b[1]) ~ "x" ~ t[cert]), bty = "n", inset = c(0.04, 0))
       }
     }
-    graphics::abline(foo.lm, lty = 2, col = 4) # <-- slope
+    graphics::abline(a = mn, b = b, lty = 2, col = grDevices::grey(0.8)) # <-- slope shifted to µ_c
+    graphics::abline(a = a, b = b, lty = 2, col = 4) # <-- slope
     graphics::abline(h = mn + c(-1, 0, 1) * U, lty = c(2, 1, 2), col = c(3, 2, 3))
     if ("Temp" %in% colnames(x[["val"]])) {
       # accelerated study plot version indicating different symbols for different Temp levels
@@ -116,6 +121,9 @@ plot_lts_data <- function(x = NULL, type = 1, t_cert = 0, slope_of_means = FALSE
     } else {
       # standard plot using grey points and highlighting commented values if present
       graphics::points(vals ~ mon, pch = 24, bg = c(grDevices::grey(0.6), 2)[1 + !is.na(com)])
+    }
+    if (show_ids) {
+      graphics::text(y = vals, x = mon, labels = names(vals), pos = 1)
     }
     if (show_legend) {
       x <- graphics::par("usr")[2] - diff(graphics::par("usr")[1:2]) * 0.005
@@ -195,6 +203,9 @@ plot_lts_data <- function(x = NULL, type = 1, t_cert = 0, slope_of_means = FALSE
       y_foo_lts <- preds[idx, ifelse(decreasing, 2, 3)]
       graphics::text(x = foo_lts, y = y_foo_lts, pos = 2, labels = paste(foo_lts, "month"))
       graphics::points(x = c(mon, foo_lts), y = c(foo_adj, y_foo_lts), pch = 21, bg = c(c(grDevices::grey(0.6), 2)[1 + !is.na(com)], 4))
+    }
+    if (show_ids) {
+      graphics::text(y = foo_adj, x = mon, labels = names(vals), pos = 1)
     }
   }
 

@@ -37,14 +37,13 @@ read_zenodo <- function(id) {
 
     # paste url together
     # file_urls <- paste0(base_url, id, "/files/", file_urls, "/content")
-    # browser()
     # paste0("https://zenodo.org/api/records/8380870/files/", content$files$filename)
-    out <- try(curl::curl_download(url = file_urls, destfile = dest, quiet = FALSE), silent = TRUE)
+    out <- try(curl::curl_download(url = file_urls, destfile = dest, quiet = TRUE), silent = TRUE)
     # out <- try(curl::multi_download(urls = file_urls, destfile = dest), silent = TRUE)
     if (inherits(out, "try-error")) {
       warning_or_modal(x = "Sorry, something went wrong upon download. :/")
     } else {
-      return(check_RData(x = dest))
+      return(check_RData_with_res_object(x = dest))
     }
   } else {
     warning_or_modal(x = "Sorry, could not find this Zenodo ID. :/")
