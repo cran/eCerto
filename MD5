@@ -1,7 +1,7 @@
-88d065c7c73b664922c265d7c2cdda89 *DESCRIPTION
+b6efc91e3049c31ded2624af58767604 *DESCRIPTION
 643faff3260eb125e936a06ea57fbc97 *LICENSE
 f4fff8f6c4b70c5068ce8b5d0413aea0 *NAMESPACE
-a15e28b2f55099a51161537d7d8eb080 *NEWS.md
+223649a197e3da6c537efd4c553195c2 *NEWS.md
 8c51920cb9b97df243e81055bcefdcad *R/app_config.R
 c4405865a6a9ab5a3043fce20ec94391 *R/app_data.R
 e8819e4566b7945db45ba1e2a12eafbf *R/app_inits.R
@@ -186,7 +186,7 @@ f33a8f792b10e2a7a283cd2acb761501 *inst/extdata/Ergebnisblatt_BAM-M321_BAM-photom
 76b10e6c198e177613102915e7207fd0 *inst/extdata/Stability_Testdata.xlsx
 09668f46d8bb29de27edbd140e421ace *inst/extdata/eCerto_LTS_example_input.xlsx
 d17de9189cb96134f58a27f94982b460 *inst/extdata/eCerto_Testdata_VModule.xlsx
-b54282b0d8d2699a8f8bdfda4036c462 *inst/golem-config.yml
+ed7c8a3e14c497202b6c8a414da14895 *inst/golem-config.yml
 05533d5b79498c4688e3b9876eb5ec6b *man/CRM001.Rd
 6731f245bea3a0738e89693431714ced *man/LTS001.Rd
 72f3d185eabf57eeb89a70bbefd7c331 *man/assert_col.Rd
@@ -231,7 +231,7 @@ b7600fd7a360076755581f1d5b033f64 *tests/testthat/test-fnc_prepTabH1.R
 ceb1c9d72d022ca6fa1309c70eae60f1 *tests/testthat/test-fnc_styleTabH1.R
 974a77987546764291524451d9b70238 *tests/testthat/test-fnc_styleTabH2.R
 48b1efc6c471e183df6e533b209c1510 *tests/testthat/test-fnc_styleTabL1.R
-9247a387abeddbef9fb8dda490798c0b *tests/testthat/test-help_the_user_modal.R
+18d2cd707e2a89893d32a9764ccb3a82 *tests/testthat/test-help_the_user_modal.R
 10fe61ece9de7e8cd25f433cb1517e20 *tests/testthat/test-homogeneity.R
 3f5133f750da90d954c3eda9c8a79a8e *tests/testthat/test-list2rv.R
 a8bc4ca8e59ef8821bf0ea8511dff62e *tests/testthat/test-materialtabelle.R

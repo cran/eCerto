@@ -4,7 +4,7 @@ default:
   app_date: !expr as.character(utils::packageDate("eCerto"))
   app_prod: no
   silent: yes
-  bam_server: no
+  bam_server: yes
 production:
   app_prod: yes
 dev:
