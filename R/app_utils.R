@@ -336,12 +336,12 @@ get_input_data <- function(rv, type = c("compact", "standard"), excl_file = FALS
     p <- rv$a_p("precision")[an]
     n_reps <- as.character(sort(unique(df$replicate)))
     if (min(as.numeric(n_reps))!=1) warning("No replicate with ID=1 found. Please check import data format (probably an additional column is present).")
-    data <- plyr::ldply(split(df, df$Lab), function(x) {
+    data <- ldply_base(split(df, df$Lab), function(x) {
       out <- rep(NA, length(n_reps))
       out[x$replicate] <- x$value
       matrix(out, ncol = length(n_reps), dimnames = list(NULL, paste0("R", n_reps)))
     }, .id = "Lab")
-    id_idx <- plyr::ldply(split(df, df$Lab), function(x) {
+    id_idx <- ldply_base(split(df, df$Lab), function(x) {
       out <- rep(NA, length(n_reps))
       out[x$replicate] <- x$ID
       matrix(out, ncol = length(n_reps), dimnames = list(NULL, paste0("R", n_reps)))
@@ -490,8 +490,6 @@ welcome_screen <- function(id = id) {
             col_widths = c(2, 10),
             shiny::img(src = "www/hex-eCerto.png", alt = "eCerto Hex-Logo", margin = "auto", width = "90%"),
             shiny::div(
-              # shiny::div(style = "font-size: large;", "Are you looking for a software to compute statistical tests on data generated in Reference Material production?"),
-              # shiny::div(style = "font-size: xx-large;", "Welcome to eCerto!")
               shiny::h3("Are you looking for a software to compute statistical tests on data generated in Reference Material production?"),
               shiny::h1(shiny::HTML("Welcome to <i>eCerto</i>!"))
             )
@@ -681,4 +679,282 @@ HTML2markdown <- function(x) {
   x <- gsub("<strong>", "**", x)
   x <- gsub("</strong>", "**", x)
   return(x)
+}
+
+#' @title render_report
+#' @description generic render function
+#' @param file output file.
+#' @param fmt output format of render.
+#' @param rmd_template rmd_template.
+#' @param params parameter list provided to rmd_template.
+#' @param quiet Set FALSE to get rmarkdown messages printed to the console.
+#' @keywords internal
+#' @noRd
+render_report <- function(file = "filename", fmt = NULL, rmd_template, params = list(), quiet = TRUE) {
+  if (is.character(fmt) && length(fmt)==1) {
+    fmt <- switch(
+      fmt,
+      "html" = rmarkdown::html_document(),
+      "docx" = rmarkdown::word_document(),
+      "pdf" = rmarkdown::pdf_document(),
+      fmt)
+  }
+  do_render <- function() {
+    rmarkdown::render(
+      input = rmd_template,
+      output_file = file,
+      output_format = fmt,
+      params = params,
+      envir = new.env(parent = globalenv()),
+      quiet = quiet
+    )
+  }
+  if (!is.null(shiny::getDefaultReactiveDomain())) {
+    shiny::withProgress(expr = {
+        shiny::incProgress(0.5)
+        do_render()
+      }, message = "Rendering Report.."
+    )
+  } else {
+    do_render()
+  }
+  return(file)
+}
+
+#' @title render_report_V
+#' @param file description
+#' @param inp_data description
+#' @param V_pars description
+#' @examples
+#' \dontrun{
+#'   # the following code will generate a Validation report from a template in a temporary file
+#'   fl <- system.file("extdata", "eCerto_Testdata_VModule.xlsx", package = "eCerto")
+#'   inp_data <- eCerto:::read_Vdata(file = fl, fmt = eCerto:::check_fmt_Vdata(fl))
+#'     V_pars <- list(
+#'       "opt_figV1_anal" = "PFBA",
+#'       "opt_figV1_level" = c(1,8),
+#'       "opt_tabV1_precision" = 4,
+#'       "opt_tabV1_alpha" = 0.5,
+#'       "opt_tabV1_k" = 3,
+#'       "opt_tabV1_unitcali" = "",
+#'       "opt_tabV1_unitsmpl" = "",
+#'       "opt_tabV1_convfac" = 1,
+#'       "opt_tabV1_fltLevels" = FALSE,
+#'       "txt_trueness" = "txt_trueness",
+#'       "txt_precision" = "txt_precision",
+#'       "txt_uncertainty" = "txt_uncertainty",
+#'       "opt_tabV1_useLevels" = TRUE,
+#'       "opt_tabV1_useAnalytes" = TRUE
+#'     )
+#'     rep_fl <- render_report_V(inp_data=inp_data, V_pars=V_pars)
+#'     readLines(rep_fl, n=10)
+#' }
+#' @keywords internal
+#' @noRd
+render_report_V <- function(file = tempfile(fileext = ".html"), inp_data, V_pars) {
+  fmt <- tolower(tools::file_ext(file))
+  params <- list(
+    "inp_data" = inp_data,
+    "logo_file" = "BAMLogo2015.png",
+    "V_pars" = V_pars,
+    "helptext_v_fig_V1" = readLines(get_local_file("v_fig_V1.[Rr][Mm][Dd]$")),
+    "helptext_v_tab_V1" = readLines(get_local_file("v_tab_V1.[Rr][Mm][Dd]$")),
+    "helptext_v_formula_collection" = readLines(get_local_file("v_formula_collection.[Rr][Mm][Dd]$"))
+  )
+  rmd_template <- get_local_file("report_vorlage_validation.[Rr][Mm][Dd]$")
+  render_report(file = file, fmt = fmt, rmd_template = rmd_template, params = params)
+}
+
+#' @title render_report_M.
+#' @param file filename.
+#' @param mt materialtabelle.
+#' @param gen General parameters.
+#' @keywords internal
+#' @noRd
+render_report_M <- function(file = tempfile(fileext = ".html"), mt, gen) {
+  fmt <- tolower(tools::file_ext(file))
+  params = list(
+    "materialtabelle" = mt,
+    "General" = gen,
+    "logo_file" = "BAMLogo2015.png"
+  )
+  rmd_template <- get_local_file("report_vorlage_material.[Rr][Mm][Dd]$")
+  render_report(file = file, fmt = fmt, rmd_template = rmd_template, params = params)
+}
+
+#' @title render_report_A.
+#' @param file filename.
+#' @param rv rv.
+#' @keywords internal
+#' @noRd
+render_report_A <- function(file = tempfile(fileext = ".html"), rv) {
+  fmt <- tolower(tools::file_ext(file))
+  params = list(
+    "General" = shiny::reactiveValuesToList(getValue(rv, "General")),
+    "Certification" = shiny::reactiveValuesToList(getValue(rv, "Certification")),
+    "Certification_processing" = shiny::reactiveValuesToList(getValue(rv, "Certification_processing")),
+    "selected_tab" = rv$cur_an,
+    "logo_file" = "BAMLogo2015.png"
+  )
+  rmd_template <- get_local_file("report_vorlage_analyt.[Rr][Mm][Dd]$")
+  render_report(file = file, fmt = fmt, rmd_template = rmd_template, params = params)
+}
+
+#' @title render_report_H.
+#' @param file filename.
+#' @param rv rv.
+#' @param xlab xlab.
+#' @param adjust adjust.
+#' @keywords internal
+#' @noRd
+render_report_H <- function(file = tempfile(fileext = ".html"), rv, xlab, adjust) {
+  fmt <- tolower(tools::file_ext(file))
+  params = list(
+    "Homogeneity" = shiny::reactiveValuesToList(getValue(rv, "Homogeneity")),
+    "xlab" = xlab,
+    "precision" = rv$a_p("precision"),
+    "adjust" = adjust
+  )
+  rmd_template <- get_local_file("report_vorlage_homogeneity.[Rr][Mm][Dd]$")
+  render_report(file = file, fmt = fmt, rmd_template = rmd_template, params = params)
+}
+
+#' @title render_report_S.
+#' @param file filename.
+#' @param rv rv.
+#' @param s_dat s_dat.
+#' @param s_pars s_pars.
+#' @param U_def U_def.
+#' @param t_cert t_cert.
+#' @param p_type p_type.
+#' @keywords internal
+#' @noRd
+render_report_S <- function(file = tempfile(fileext = ".html"), rv, s_dat, s_pars, U_def, t_cert, p_type) {
+  fmt <- tolower(tools::file_ext(file))
+  params = list(
+    "Stability" = shiny::reactiveValuesToList(getValue(rv, "Stability")),
+    "Options" = list(
+      "s_Data" = s_dat[!(rownames(s_dat) %in% s_pars$s_samples_filtered),],
+      "apm" = getValue(rv, c("General", "apm")),
+      "U_Def" = U_def,
+      "mt" = getValue(rv, c("General", "materialtabelle")),
+      "type" = p_type,
+      "t_cert" = t_cert,
+      "slope_of_means" = s_pars$slope_of_means,
+      "show_legend" = s_pars$show_legend,
+      "show_ids" = s_pars$show_ids
+    )
+  )
+  rmd_template <- get_local_file("report_vorlage_stability.[Rr][Mm][Dd]$")
+  render_report(file = file, fmt = fmt, rmd_template = rmd_template, params = params)
+}
+
+#' @title render_report_L.
+#' @param file filename.
+#' @param x x.
+#' @keywords internal
+#' @noRd
+render_report_L <- function(file = tempfile(fileext = ".pdf"), x) {
+  # this needs to be "pdf_document", so that render will switch to lualatex as specified in Rmd template
+  fmt <- "pdf_document"
+  # remove filtered values from report (if any)
+  if (any(x[[1]][["val"]][,"Filter"])) {
+    x[[1]][["val"]] <- x[[1]][["val"]][!x[[1]][["val"]][,"Filter"],]
+  }
+  params <- list("dat" = x)
+  rmd_template <- get_local_file("report_vorlage_lts.[Rr][Mm][Dd]$")
+  render_report(file = file, fmt = fmt, rmd_template = rmd_template, params = params)
+}
+
+#' @title render_report_D.
+#' @param file filename.
+#' @param D D.
+#' @keywords internal
+#' @noRd
+render_report_D <- function(file = tempfile(fileext = ".pdf"), D) {
+  fmt <- tolower(tools::file_ext(file))
+  params <- list(
+    "D" = D,
+    "logo_file" = "BAMLogo2015.png"
+  )
+  rmd_template <- get_local_file("report_vorlage_drmd.[Rr][Mm][Dd]$")
+  render_report(file = file, fmt = fmt, rmd_template = rmd_template, params = params)
+}
+
+#' @title ldply_base
+#' @description A base R implementation of plyr::ldply
+#' @param .data A list or vector.
+#' @param .fun Function to apply to each item.
+#' @param .progress Show progress bar if 'text'.
+#' @param .id Name of the index column (used if .data is a named list). Pass NULL to avoid creation of the index column. For compatibility, omit this argument or pass NA to avoid converting the index column to a factor; in this case, ".id" is used as colum name.
+#' @param ... Arguments to .fun.
+#' @examples
+#' x <- list(a = data.frame(x = 1:2, y = 5:6), b = data.frame(x = 3:4, y = 7:8))
+#' ldply_base(x)
+#' ldply_base(x, .id = NULL)
+#' ldply_base(unname(x))
+#' ldply_base(x, .id = "test")
+#' # compare against standard plyr::ldply
+#' #plyr::ldply(x, .id="test")
+#' str(ldply_base(x))
+#' #str(plyr::ldply(x))
+#' x <- c("01.01.2025","02.01.2025")
+#' ldply_base(x, as.Date.character, tryFormats = "%d.%m.%Y")
+#' #plyr::ldply(x, as.Date.character, tryFormats = "%d.%m.%Y")
+#' @export
+ldply_base <- function(.data, .fun = identity, .progress = "none", .id = NA, ...) {
+  n <- length(.data)
+
+  if (is.character(.fun)) { .fun <- match.fun(.fun) }
+
+  if (.progress == "text") { pb <- utils::txtProgressBar(min = 0, max = n, style = 3) }
+
+  result <- vector("list", n)
+  for (i in seq_along(.data)) {
+    if (.progress == "text") utils::setTxtProgressBar(pb, i)
+    result[[i]] <- .fun(.data[[i]], ...)
+  }
+
+  if (.progress == "text") close(pb)
+
+  # are all elements atomic and no matrix
+  if (all(vapply(result, is.atomic, logical(1))) && !any(vapply(result, is.matrix, logical(1)))) {
+    # do all elements share the same class
+    classes <- vapply(result, function(x) paste(class(x), collapse = ","), character(1))
+    if (length(unique(classes)) == 1) {
+      # combine and re-assign class
+      combined <- unlist(result, use.names = FALSE)
+      class(combined) <- strsplit(unique(classes), ",")[[1]]
+      df <- data.frame("V1" = combined, row.names = NULL, check.names = FALSE)
+    } else {
+      # fall back case for different classes
+      df <- data.frame(lapply(do.call(rbind, lapply(result, as.list)), I), row.names = NULL, check.names = FALSE)
+    }
+  } else {
+    # complex elements
+    df <- do.call(rbind, lapply(result, function(x) {
+      if (is.atomic(x) && !is.matrix(x)) {
+        as.data.frame(as.list(x), check.names = FALSE)
+      } else {
+        as.data.frame(x, check.names = FALSE)
+      }
+    }))
+    rownames(df) <- NULL
+
+  }
+
+  # add .id column if .id is NA and list is named; omit id column for .id=NULL in any case
+  if (!is.null(.id)) {
+    if (!is.na(.id) | is.na(.id) && !is.null(names(.data))) {
+      if (!is.null(names(.data))) {
+        ids <- rep(names(.data), times=sapply(result,nrow))
+        if (!is.na(.id)) ids <- factor(ids)
+      } else {
+        ids <- rep(seq_len(n), times = sapply(result, nrow))
+      }
+      df <- cbind(stats::setNames(data.frame(ids), ifelse(is.na(.id), ".id", .id)), df)
+    }
+  }
+
+  return(df)
 }

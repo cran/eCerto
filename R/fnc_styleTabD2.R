@@ -1,14 +1,14 @@
 #' @title fnc_styleTabD2.
 #' @description \code{styleTabD2} will style Tab.D2 for pretty output.
 #' @details tbd.
-#' @param df The data.frame of values.
+#' @param df The data.frame of values with at least 3 columns "idx", "path", "value".
 #' @param selected Currently selected row.
 #' @param interact_ele Show interactive elements (ordering and buttons), respectively use FALSE to hide them for Word export.
 #' @examples
-#' inp <- "C:/Users/jlisec/Documents/Projects/BAMTool_Backup/DRMD/drmc-007.xml"
-#' tab <- eCerto:::read_drmd_xml(inp)
-#' tab <- eCerto:::xml2df(tab, type = "quant")
-#' out_dt <- eCerto:::style_tabD2(df = tab, selected = NULL, interact_ele = FALSE)
+#' fl <- system.file("extdata", "drmd", "BAM-M375a.xml", package = "eCerto")
+#' lst <- eCerto:::read_drmd_xml(fl)
+#' tab <- eCerto:::flatten_list_to_df(lst)
+#' out_dt <- eCerto:::styleTabD2(df = tab, selected = NULL, interact_ele = FALSE)
 #' out_dt
 #' @return A datatable object.
 #' @keywords internal
@@ -16,15 +16,17 @@
 styleTabD2 <- function(df, selected = 1, interact_ele = TRUE, L3 = NULL) {
   e_msg("Styling Tab.D2 for HTML output")
 
-  #browser()
   # === new version
-  if (all(c("idx", "path") %in% colnames(df))) {
+  if (all(c("idx", "path", "value") %in% colnames(df))) {
+    # remove values containing comments
     df <- df[df[,"value"]!="[ comment ]",]
+    # filter for elements containing the term 'quantity' in their path
     df <- df[grep("quantity", df[,"path"]),]
-    df$L3 <- sapply(strsplit(df[,"idx"],"_"),function(x){x[3]})
-    df$L8 <- sapply(strsplit(df[,"idx"],"_"),function(x){x[8]})
+    df$L3 <- as.numeric(sapply(strsplit(df[,"idx"],"_"),function(x){x[3]}))
+    df$L8 <- as.numeric(sapply(strsplit(df[,"idx"],"_"),function(x){x[8]}))
     df$name <- sapply(strsplit(df[,"path"],"_"),function(x){x[length(x)]})
-    df <- cbind(df[,!colnames(df)%in%"value"], "value" = df[,"value"])
+    # put 'value' column to the end and remov path
+    df <- cbind(df[,!colnames(df) %in% c("path","value")], "value" = df[,"value"])
   }
   # === new version
 
@@ -36,11 +38,17 @@ styleTabD2 <- function(df, selected = 1, interact_ele = TRUE, L3 = NULL) {
   }
 
   tmp <- df[df$L3==L3,]
-  df <- dplyr::bind_rows(lapply(split(tmp, tmp$L8), function(x) {
-    stats::setNames(x$value, apply(x[,-ncol(x),drop=FALSE], 1, function(y) {
-      rev(stats::na.omit(y))[1]
-    }))
-  }))
+  # browser()
+  # df <- dplyr::bind_rows(lapply(split(tmp, as.numeric(tmp$L8)), function(x) {
+  #   stats::setNames(x$value, apply(x[,-ncol(x),drop=FALSE], 1, function(y) {
+  #     rev(stats::na.omit(y))[1]
+  #   }))
+  # }))
+
+  # combine lists of metabolite values into dataframe
+  lst <- lapply(split(tmp, tmp$L8), function(x) { stats::setNames(x$value, x$name) })
+  all_names <- unique(unlist(lapply(lst, names)))
+  df <- do.call(rbind, lapply(lst, function(v) { v[match(all_names, names(v))] }))
 
   #if (selected %in% 1:now(df))
 

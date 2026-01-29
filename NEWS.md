@@ -1,6 +1,24 @@
+# eCerto 0.8.11 [28.01.2026]
+* rewrite read_zenodo() to comply with CRAN rules to 'exit gracefully'
+
+# eCerto 0.8.10 [07.01.2026]
+* fix error in LTS modul (error upon new value entry)
+
+# eCerto 0.8.9 [18.11.2025]
+* set up a 'devel' branch on GitHub to keep 'main' branch non-failing
+
+# eCerto 0.8.8 [06.11.2025]
+* DRMD v0.3.0 now supported
+* XML validation implemented
+* DRMD schema incorporated as external data
+* DRMD table visualization improved for idx column
+
+# eCerto 0.8.7 [03.11.2025]
+* Docker container creation incorporated in the GitHub CI
+
 # eCerto 0.8.5
 * skipping a test for markdown rendering the help files on CRAN to avoid an 
-  markdown relatederror
+  markdown related error
 
 # eCerto 0.8.4
 * function adjusted to comply with current DRMD XML schema definition

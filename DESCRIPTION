@@ -1,8 +1,8 @@
 Type: Package
 Package: eCerto
 Title: Statistical Tests for the Production of Reference Materials
-Version: 0.8.5
-Date: 2025-03-28
+Version: 0.8.11
+Date: 2026-01-29
 Authors@R: c(
     person("Jan", "Lisec", , "jan.lisec@bam.de", role = c("cre", "aut"),
            comment = c(ORCID = "0000-0003-1220-2286")),
@@ -27,17 +27,17 @@ Language: en-US
 LazyData: true
 LazyDataCompression: bzip2
 Depends: R (>= 4.1.0)
-Imports: bslib, config, dplyr, DT, golem, knitr, magick, markdown (>=
-        2.0), moments, openxlsx, plyr, purrr, R6, rmarkdown (>= 1.5),
-        shiny, shinyjs, shinyWidgets, tidyxl, xml2
-Suggests: covr, curl, fs, jsonlite, rlang, shinytest2, testthat (>=
-        3.0.0), vdiffr, webshot2
+Imports: bslib, config, DT, golem, knitr, markdown (>= 2.0), moments,
+        openxlsx, purrr, R6, rmarkdown (>= 1.5), shiny, shinyjs,
+        shinyWidgets, tidyxl, xml2
+Suggests: covr, curl, fs, jsonlite, rlang, testthat (>= 3.0.0), vdiffr,
+        webshot2
 biocViews:
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3
 Config/testthat/edition: 3
 NeedsCompilation: no
-Packaged: 2025-03-28 12:31:10 UTC; jlisec
-Author: Jan Lisec [cre, aut] (<https://orcid.org/0000-0003-1220-2286>),
+Packaged: 2026-01-29 09:43:25 UTC; jlisec
+Author: Jan Lisec [cre, aut] (ORCID: <https://orcid.org/0000-0003-1220-2286>),
   Frederik Kreß [ctb]
 Repository: CRAN
-Date/Publication: 2025-03-28 13:00:02 UTC
+Date/Publication: 2026-01-29 12:20:02 UTC
