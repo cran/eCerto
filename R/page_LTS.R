@@ -15,6 +15,13 @@
 #'       eCerto:::m_longtermstabilityServer(id = "test", test_data = fl)
 #'     }
 #'   )
+#'   test_nav_panel_app(
+#'     panel = app_panels()$L,
+#'     server = function(input, output, session) {
+#'       fl <- "C:/Users/jlisec/Documents/Projects/BAMTool_Backup/Testdaten/TS5/LTS_BAM-B003.xlsx"
+#'       eCerto:::m_longtermstabilityServer(id = "lts", test_data = fl)
+#'     }
+#'   )
 #' }
 #' @noRd
 #' @keywords internal
@@ -84,14 +91,18 @@ m_longtermstabilityUI <- function(id) {
     shiny::conditionalPanel(
       condition = "output.LTS_fileUploaded == false",
       ns = ns, # namespace of current module
-      shiny::fileInput(
-        inputId = ns("LTS_input_file"),
-        label = shiny::actionLink(inputId = ns("InputHelp"), "Import Excel/RData File"),
-        multiple = FALSE,
-        accept = c("xls", "xlsx", "RData")
-      ),
-      shiny::p(shiny::helpText("Example Table")),
-      shiny::img(src = "www/rmd/fig/L_Modul_Import.png")
+      bslib::card(
+        shiny::fileInput(
+          inputId = ns("LTS_input_file"),
+          label = shiny::actionLink(inputId = ns("InputHelp"), "Import Excel/RData File"),
+          multiple = FALSE,
+          accept = c("xls", "xlsx", "RData")
+        ),
+        shiny::div(
+          shiny::p(shiny::helpText("Example Table (for initial data upload)")),
+          shiny::uiOutput(outputId = ns("example_table_generic"))
+        )
+      )
     ),
     shiny::conditionalPanel(
       condition = "output.LTS_fileUploaded == true",
@@ -112,6 +123,11 @@ m_longtermstabilityUI <- function(id) {
 #' @keywords internal
 m_longtermstabilityServer <- function(id, test_data = NULL) {
   shiny::moduleServer(id, function(input, output, session) {
+
+    output$example_table_generic <- renderUI({
+        ft <- LTS_upload_example_table()
+        flextable::htmltools_value(ft, ft.align = "left")
+    })
 
     lts <- shiny::reactiveValues(
       "data" = NULL,
@@ -274,7 +290,7 @@ m_longtermstabilityServer <- function(id, test_data = NULL) {
     }, ignoreNULL = FALSE)
 
     # Data Figures
-    output$LTS_plot1_1 <- shiny::renderPlot({
+    output$LTS_plot1_1 <- renderPlotHD({
       shiny::req(lts[["data"]], i(), d())
       input$LTS_newPoint_Apply
       e_msg("Render LTS_plot1_1")
@@ -288,7 +304,7 @@ m_longtermstabilityServer <- function(id, test_data = NULL) {
       }
     })
 
-    output$LTS_plot1_2 <- shiny::renderPlot({
+    output$LTS_plot1_2 <- renderPlotHD({
       shiny::req(lts[["data"]], i())
       input$LTS_newPoint_Apply
       e_msg("Render LTS_plot1_2")

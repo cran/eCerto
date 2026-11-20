@@ -5,21 +5,15 @@
 #' @param rv The session R6 object.
 #' @examples
 #' if (interactive()) {
-#'   shiny::shinyApp(
-#'     ui = shiny::fluidPage(
-#'       shinyjs::useShinyjs(),
-#'       eCerto:::page_HomogeneityUI(id = "test")
-#'     ),
+#'   test_nav_panel_app(
+#'     panel = app_panels()$H,
 #'     server = function(input, output, session) {
 #'       rv <- eCerto:::test_rv()
 #'       mt <- isolate(eCerto::getValue(rv, c("General", "materialtabelle")))
 #'       attr(mt, "col_code") <- data.frame("ID" = "U", "Name" = "U")
 #'       isolate(eCerto::setValue(rv, c("General", "materialtabelle"), mt))
 #'       isolate(eCerto::setValue(rv, "Homogeneity", eCerto:::test_homog()))
-#'       eCerto:::page_HomogeneityServer(
-#'         id = "test",
-#'         rv = rv
-#'       )
+#'       eCerto:::page_HomogeneityServer(id = "Homogeneity", rv = rv)
 #'     }
 #'   )
 #' }
@@ -51,8 +45,6 @@ page_HomogeneityUI <- function(id) {
   )
 
   tab_H2_panel <- bslib::card(
-    #min_height = 500
-    #fill = FALSE,
     bslib::card_header(
       shiny::strong(shiny::actionLink(inputId = ns("tab2_link"), label = "Tab.H2 - specimen stats")),
     ),
@@ -67,7 +59,10 @@ page_HomogeneityUI <- function(id) {
     bslib::card_header(
       class = "d-flex justify-content-between",
       shiny::strong(shiny::actionLink(inputId = ns("fig1_link"), label = "Fig.H1 - boxplot of specimen values")),
-      shiny::div(style = "float: left; margin-left: 15px;", shiny::downloadButton(ns("h_Report"), label = "Download Report"))
+      shiny::div(
+        shiny::div(style = "float: left; margin-left: 15px;", shiny::downloadButton(ns("h_Report"), label = "Download Report")),
+        shiny::div(style = "float: left; margin-left: 15px;", shiny::radioButtons(inputId = ns("ReportFormat"), label = NULL, choices = list("HTML"="html", "DOCX"="docx"), width = 70))
+      ),
     ),
     bslib::card_body(
       fill = TRUE,
@@ -89,8 +84,10 @@ page_HomogeneityUI <- function(id) {
             shiny::textInput(inputId = ns("FigH1_xlab"), label = "Edit x-axis label", value = "Flasche")
           )
         ),
-        bslib::card_body(min_height = 400, padding = 0, gap = 0, shiny::plotOutput(ns("h_FigH1"))),
-        bslib::card_body(min_height = 0, padding = 0, gap = 0, shiny::plotOutput(ns("h_FigH2")))
+        #bslib::card_body(min_height = 400, padding = 0, gap = 0, shiny::plotOutput(ns("h_FigH1"))),
+        bslib::card_body(padding = 0, gap = 0, shiny::uiOutput(ns("h_FigH1_ui"))),
+        bslib::card_body(padding = 0, gap = 0, shiny::uiOutput(ns("h_FigH2_ui"))),
+        #bslib::card_body(id = ns("h_FigH2_wrap"), min_height = 0, padding = 0, gap = 0, shiny::plotOutput(ns("h_FigH2")))
       )
     ),
     bslib::card_footer(
@@ -98,30 +95,17 @@ page_HomogeneityUI <- function(id) {
     )
   )
 
-  shiny::tabsetPanel(
-    id = ns("HomogeneityPanel"),
-    type = "hidden", # when nothing is loaded
-    shiny::tabPanel(
-      title = "standby-Panel",
-      value = "standby",
-      "nothing has uploaded yet"
-    ),
-    # when something is loaded
-    shiny::tabPanel(
-      title = "active-Panel",
-      value = "loaded",
-      bslib::layout_columns(
-        shiny::tagList(
-          tab_H1_panel,
-          tab_H2_panel
-        ),
-        shiny::tagList(
-          fig_H1_panel
-        ),
-        col_widths =  bslib::breakpoints(
-          sm = c(12, 12),
-          xl = c(5, 7)
-        )
+  shiny::tagList(
+    bslib::layout_columns(
+      fill = FALSE,
+      shiny::tagList(
+        tab_H1_panel,
+        tab_H2_panel
+      ),
+      fig_H1_panel,
+      col_widths =  bslib::breakpoints(
+        sm = c(12, 12),
+        xl = c(5, 7)
       )
     )
   )
@@ -131,15 +115,6 @@ page_HomogeneityUI <- function(id) {
 page_HomogeneityServer <- function(id, rv) {
   shiny::moduleServer(id, function(input, output, session) {
     ns <- shiny::NS(id)
-
-    # this is the local version of the homology data and parameters
-    shiny::observeEvent(rv$e_present(), {
-      if (rv$e_present()["Homogeneity"]) {
-        shiny::updateTabsetPanel(session = session, "HomogeneityPanel", selected = "loaded")
-      } else {
-        shiny::updateTabsetPanel(session = session, "HomogeneityPanel", selected = "standby")
-      }
-    })
 
     # local version of input data table
     h_Data <- shiny::reactive({
@@ -227,7 +202,7 @@ page_HomogeneityServer <- function(id, rv) {
         x = h_vals(),
         mt = getValue(rv, c("General", "materialtabelle")),
         prec = rv$a_p("precision"),
-        output = "dt", cr = h_tab1_current$row
+        output = "DT", cr = h_tab1_current$row
       )
       return(dt)
     })
@@ -259,28 +234,44 @@ page_HomogeneityServer <- function(id, rv) {
       x <- h_Data()[, c("analyte", "H_type", "Flasche")]
       calc_bxp_width(n = length(levels(factor(x[interaction(x[, 1], x[, 2]) == input$h_sel_analyt, 3]))))
     })
+    fig_width_d <- shiny::debounce(fig_width, millis = 75)
 
-    output$h_FigH1 <- shiny::renderPlot(
-      {
-        shiny::req(h_Data(), input$h_sel_analyt, precision())
+    output$h_FigH1_ui <- renderUI({
+      req(fig_width())
+      shiny::req(h_Data(), input$h_sel_analyt, precision())
+      div(
+        style = sprintf("width:%dpx; display:block;", fig_width()),
+        plotOutput(ns("h_FigH1"))
+      )
+    })
+
+    output$h_FigH1 <- renderPlotHD({
         prepFigH1(x = h_Data(), sa = input$h_sel_analyt, prec = precision(), xlab = input$FigH1_xlab, showIDs = "show_repID" %in% input$FigH1_opt)
-      },
-      # [JL] height and width needs to be fixed as long as we render the figure as inline
-      #height = 500,
-      width = shiny::reactive({ fig_width() })
+      }, width = function() fig_width_d()
     )
 
-    output$h_FigH2 <- shiny::renderPlot(
-      {
-        shiny::req(h_Data(), precision())
-        prepFigH1(x = h_Data(), sa = NULL, prec = 2, xlab = input$FigH1_xlab)
-      },
-      #height = 500,
-      width = shiny::reactive({ fig_width() })
-    )
+    fig_width2 <- shiny::reactive({
+      shiny::req(h_Data())
+      calc_bxp_width(n = length(unique(h_Data()[, "Flasche"])))
+    })
+
+    output$h_FigH2_ui <- renderUI({
+      req("show_H2" %in% input$FigH1_opt)
+      req(h_Data(), precision())
+      req(fig_width2())
+      div(
+        style = sprintf("width:%dpx; display:block;", fig_width2()),
+        plotOutput(ns("h_FigH2"))
+      )
+    })
+
+    output$h_FigH2 <- renderPlotHD({
+      prepFigH1(x = h_Data(), sa = NULL, prec = 2, xlab = input$FigH1_xlab)
+    }, width = function() fig_width2())
+
 
     shiny::observeEvent(input$FigH1_opt, {
-      shinyjs::toggle(id = "h_FigH2", condition = "show_H2" %in% input$FigH1_opt)
+      shinyjs::toggle(id = "h_FigH2_wrap", condition = "show_H2" %in% input$FigH1_opt)
     }, ignoreNULL = FALSE, ignoreInit = FALSE)
 
     output$h_txt <- shiny::renderUI({
@@ -297,7 +288,7 @@ page_HomogeneityServer <- function(id, rv) {
 
     # download reports
     output$h_Report <- shiny::downloadHandler(
-      filename = function() { "Homogeneity_report.html" },
+      filename = function() { paste0("Homogeneity_Report.", input$ReportFormat) },
       content = function(file) {
         render_report_H(file = file, rv = rv, xlab = input$FigH1_xlab, adjust = input$h_adjust)
       }

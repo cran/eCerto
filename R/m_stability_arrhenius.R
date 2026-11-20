@@ -65,7 +65,6 @@ m_arrheniusUI <- function(id) {
   )
 
   tab_S2_panel <- bslib::card(
-    #fill = FALSE,
     bslib::card_header(
       shiny::strong(shiny::actionLink(inputId = ns("ArrheniusTab_link"), label = "Tab.S2 - calculation of possible storage time")),
     ),
@@ -81,14 +80,8 @@ m_arrheniusUI <- function(id) {
             shiny::numericInput(inputId = ns("num_coef"), label = NULL, value = NULL)
           )
         ),
-        bslib::layout_columns(
-          col_widths = c(6, 4, 2, 10),
-          #row_heights = list("auto", "120px"),
-          shiny::div(DT::DTOutput(outputId = ns("Tab1"))),
-          shiny::div(DT::DTOutput(outputId = ns("Tab1exp"))),
-          shiny::div(style = "padding-right: 16px; min-width: 200px;", DT::DTOutput(outputId = ns("outTab"))),
-          shiny::div(DT::DTOutput(outputId = ns("Tab2")))
-        )
+        shiny::div(DT::DTOutput(outputId = ns("s_tab2"))),
+        shiny::div(DT::DTOutput(outputId = ns("Tab2")))
       )
     ),
     bslib::card_footer(
@@ -145,6 +138,13 @@ m_arrheniusServer <- function(id, rv) {
       if (is.null(rv$cur_an) | !identical(rv$cur_an, input$analyte)) rv$cur_an <- input$analyte
     }, ignoreNULL = TRUE, ignoreInit = TRUE)
 
+    s_flt <- shiny::reactiveVal(NULL)
+    shiny::observeEvent(getValue(rv, c("Stability", "s_pars")), {
+      req(!inherits(try(getValue(rv, c("Stability", "s_pars", "s_samples_filtered")), silent = TRUE), "try-error"))
+      x <- getValue(rv, c("Stability", "s_pars", "s_samples_filtered"))
+      if (!identical(x, s_flt())) s_flt(x)
+    }, ignoreNULL = TRUE)
+
     df <- shiny::reactive({
       shiny::req(input$analyte)
       dat <- getValue(rv, c("Stability", "data"))
@@ -152,9 +152,8 @@ m_arrheniusServer <- function(id, rv) {
       shiny::validate(shiny::need(req_col %in% colnames(dat), message = paste("These columns required for Arrhenius calculations are not available:", paste(req_col[!(req_col %in% colnames(dat))], collapse = ", "))))
       shiny::validate(shiny::need(input$analyte %in% as.character(dat[, "analyte"]), message = "How did you manage to specify a non existent analyte name?"))
       tmp <- dat[as.character(dat[, "analyte"]) == input$analyte, ]
-      # filtering step according to user selection
-      s_pars <- getValue(rv, c("Stability", "s_pars"))
-      tmp <- tmp[!rownames(tmp) %in% s_pars$s_samples_filtered,]
+      # filtering step according to user selection (Exclude IDs input in Fig.S1 options)
+      tmp <- tmp[!rownames(tmp) %in% s_flt(),]
       # normalize data to mean of t=0
       flt <- is.finite(tmp[, "Value"]) & tmp[, "Value"] > 0
       if (!all(flt)) {
@@ -165,7 +164,7 @@ m_arrheniusServer <- function(id, rv) {
       return(tmp)
     })
 
-    output$FigS2 <- shiny::renderPlot({
+    output$FigS2 <- renderPlotHD({
       req(df())
       prepFigS2(
         tmp = df(),
@@ -179,105 +178,34 @@ m_arrheniusServer <- function(id, rv) {
     })
 
     # generate Tab1
-    getTab1 <- function(tmp) {
-      tf <- factor(tmp[, "Temp"])
-      if ("round_time" %in% input$s_opt_FigS2) {
-        # the version for compatibility with Bremser (round to 1/4 month precision)
-        time <- tmp[, "time"] * 12 / 365
-        time <- round(round(4 * time) / 4, 2)
-      } else {
-        # the day wise precise version
-        time <- round(tmp[, "time"] * 12 / 365, 2)
-      }
-      val <- log(tmp[, "Value"])
-      out <- ldply_base(levels(tf)[-1], function(k) {
-        # the linear model shall include the reference data
-        flt <- tmp[, "Temp"] == k | tmp[, "Temp"] == levels(tf)[1]
-        a <- stats::coef(stats::lm(val[flt] ~ time[flt]))[2]
-        # Rec and RSD are calculated without reference data
-        flt <- tmp[, "Temp"] == k
-        return(data.frame(
-          "dummy" = k,
-          "Rec" = paste0(round(100 * mean(tmp[flt, "Value"], na.rm = T), 1), "%"),
-          "RSD" = paste0(round(100 * stats::sd(tmp[flt, "Value"], na.rm = T) / mean(tmp[flt, "Value"], na.rm = T), 1), "%"),
-          "1/K" = 1 / (273.15 + as.numeric(k)),
-          "k_eff" = a,
-          "log(-k_eff)" = ifelse(a < 0, log(-a), NA),
-          check.names = FALSE
-        ))
-      })
-      colnames(out)[1] <- "T [\u00B0C]"
-      return(out)
-    }
     tab1 <- shiny::reactive({
       req(df())
-      getTab1(tmp = df())
+      prepTabS2a(x = df(), s_opt_FigS2 = input$s_opt_FigS2)
     })
-    output$Tab1 <- DT::renderDT(
-      {
-        out <- tab1()
-        for (i in which(colnames(out) %in% c("1/K", "k_eff", "log(-k_eff)"))) out[, i] <- round(out[, i], prec)
-        return(out)
-      },
-      options = list(dom = "t"),
-      rownames = FALSE
-    )
-
-    getTab2 <- function(tab1) {
-      shiny::validate(shiny::need(sum(tab1()[, "k_eff"] < 0) >= 3, message = "Need at least 3 negative reaction constants 'k_eff' to establish linear model."))
-      s <- sum(tab1[, "1/K"])
-      s2 <- sum(tab1[, "1/K"]^2)
-      n <- nrow(tab1)
-      se <- steyx(x = tab1[, "1/K"], y = tab1[, "log(-k_eff)"])
-      out <- data.frame(
-        "sum_x" = s,
-        "sum_x2" = s2,
-        "n" = n,
-        "steyx" = se,
-        "u(i)" = sqrt(se^2 * s2 / (s2 * n - s^2)),
-        "u(s)" = sqrt(se^2 * n / (s2 * n - s^2)),
-        "cov" = -1 * (se^2 * s / (s2 * n - s^2)),
-        check.names = FALSE
-      )
+    output$Tab1 <- DT::renderDT({
+      out <- tab1()
+      for (i in which(colnames(out) %in% c("1/K", "k_eff", "log(-k_eff)"))) out[, i] <- round(out[, i], prec)
       return(out)
-    }
+    }, options = list(dom = "t"), rownames = FALSE)
+
     tab2 <- shiny::reactive({
       shiny::req(tab1())
-      getTab2(tab1 = tab1())
+      shiny::validate(shiny::need(sum(tab1()[, "k_eff"] < 0) >= 3, message = "Need at least 3 negative reaction constants 'k_eff' to establish linear model."))
+      prepTabS2b(x = tab1())
     })
-    output$Tab2 <- DT::renderDT(
-      {
-        out <- tab2()
-        for (i in which(colnames(out) %in% c("steyx", "u(i)", "u(s)", "cov"))) out[, i] <- round(out[, i], prec)
-        return(out)
-      },
-      options = list(dom = "t"),
-      rownames = FALSE
-    )
+    output$Tab2 <- DT::renderDT({
+      styleTabS3(tab2())
+    })
 
-    expTab1 <- function(tab1, tab2) {
-      ce <- stats::coef(stats::lm(tab1[, "log(-k_eff)"] ~ tab1[, "1/K"]))
-      a <- ce[2]
-      b <- ce[1]
-      out <- tab1
-      out[, "log(k)_calc"] <- a * tab1[, "1/K"] + b
-      out[, "CI_upper"] <- sqrt(tab2[, "u(i)"]^2 + tab2[, "u(s)"]^2 * tab1[, "1/K"]^2 + 2 * tab2[, "cov"] * tab1[, "1/K"]) + out[, "log(k)_calc"]
-      out[, "CI_lower"] <- 2 * out[, "log(k)_calc"] - out[, "CI_upper"]
-      return(out)
-    }
     tab1exp <- shiny::reactive({
       shiny::req(tab1(), tab2())
-      expTab1(tab1 = tab1(), tab2 = tab2())
+      prepTabS2c(x = tab1(), y = tab2())
     })
-    output$Tab1exp <- DT::renderDT(
-      {
-        out <- tab1exp()[, -c(1:6)]
-        for (i in 1:ncol(out)) out[, i] <- round(out[, i], prec)
-        return(out)
-      },
-      options = list(dom = "t"),
-      rownames = FALSE
-    )
+    output$Tab1exp <- DT::renderDT({
+      out <- tab1exp()[, -c(1:6)]
+      for (i in 1:ncol(out)) out[, i] <- round(out[, i], prec)
+      return(out)
+    }, options = list(dom = "t"), rownames = FALSE)
 
     observe({
       req(input$rbtn_storage, input$analyte)
@@ -305,16 +233,17 @@ m_arrheniusServer <- function(id, rv) {
       }
     })
 
-    output$outTab <- DT::renderDT(
-      {
-        req(tab1exp(), input$num_coef)
-        out <- tab1exp()
-        out[, "month"] <- round(input$num_coef / (-1 * exp(out[, "CI_upper"])))
-        return(out[, c(1, 10)])
-      },
-      options = list(dom = "t"),
-      rownames = FALSE
-    )
+    output$outTab <- DT::renderDT({
+      req(tab1exp(), input$num_coef)
+      out <- tab1exp()
+      out[, "month"] <- round(input$num_coef / (-1 * exp(out[, "CI_upper"])))
+      return(out[, c(1, 10)])
+    }, options = list(dom = "t"), rownames = FALSE)
+
+    output$s_tab2 <- DT::renderDT({
+      req(tab1exp(), input$num_coef)
+      styleTabS2(x = tab1exp(), num_coef = input$num_coef)
+    })
 
     output$user_month <- shiny::renderUI({
       shiny::req(input$user_temp, tab1(), input$num_coef, tab2())
@@ -326,7 +255,7 @@ m_arrheniusServer <- function(id, rv) {
       shiny::HTML("At the specified temperature of", input$user_temp, " the analyte <strong>", input$analyte, "</strong> is expected to be stable for", m, "month (mean) or <strong>", m_CIup, " month</strong> (CI<sub>upper</sub>) respectively.")
     })
 
-    output$FigS3 <- shiny::renderPlot({
+    output$FigS3 <- renderPlotHD({
       shiny::req(tab1exp())
       prepFigS3(tab = tab1exp())
     })

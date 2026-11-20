@@ -3,13 +3,16 @@
 #' @param x Object `materialtabelle`.
 #' @param apm apm to determine selected rounding precision
 #' @param selected_row should a specific row be selected.
+#' @param output Return either a formatted Datatable (DT) or flextable (ft) object.
 #' @examples
 #' x <- shiny::isolate(eCerto::getValue(eCerto:::test_rv(type = "SR3"), c("General", "materialtabelle")))
 #' eCerto:::styleTabC3(x)
+#' eCerto:::styleTabC3(x, output="ft")
 #' @return A data table object.
 #' @keywords internal
 #' @noRd
-styleTabC3 <- function(x, apm = NULL, selected_row = 1) {
+styleTabC3 <- function(x, apm = NULL, selected_row = 1, output = c("DT", "ft", "ft_HTML")) {
+  output <- match.arg(output)
   e_msg("Styling Tab.C3")
   precision_U <- 4
   prec_exp <- NULL
@@ -46,30 +49,50 @@ styleTabC3 <- function(x, apm = NULL, selected_row = 1) {
       colnames(x)[colnames(x) == cc[k, "ID"]] <- cc[k, "Name"]
     }
   }
-  colnames(x) <- gsub("^U_abs$", "U<sub>abs</sub>", colnames(x))
-  colnames(x) <- gsub("^u_char$", "u<sub>char</sub>", colnames(x))
-  colnames(x) <- gsub("^u_com$", "u<sub>com</sub>", colnames(x))
-  colnames(x) <- gsub("^cert_val$", "\u00B5<sub>c</sub>", colnames(x))
-  dt <- DT::datatable(
-    data = x,
-    editable = list(
-      target = "cell",
-      disable = non_edit_cols
-    ),
-    options = list(
-      dom = "t", paging = FALSE, scrollX = TRUE, ordering = FALSE,
-      columnDefs = list(
-        list("width" = paste0(max(c(60, nchar(as.character(x[, "analyte"])) * 9)), "px"), "targets" = which(colnames(x) %in% c("analyte")) - 1),
-        list("width" = "80px", "targets" = which(!(colnames(x) %in% c("analyte", "n", "k", "unit"))) - 1),
-        list("width" = "30px", "targets" = which(colnames(x) %in% c("n", "k")) - 1)
-      )
-    ),
-    rownames = NULL, escape = FALSE, selection = list(mode = "single", target = "row", selected = selected_row)
-  )
-  dt <- DT::formatCurrency(table = dt, columns = u_cols, currency = "", digits = precision_U)
-  # if (!is.null(prec_exp)) dt <- DT::formatCurrency(table = dt, columns = "cert_val", currency = "", digits = prec_exp)
-  if (!is.null(prec_exp)) {
-    #dt <- DT::formatCurrency(table = dt, columns = "\u00B5<sub>c</sub>", currency = "", digits = prec_exp)
+  if (output == "DT") {
+    colnames(x) <- gsub("^U_abs$", "U<sub>abs</sub>", colnames(x))
+    colnames(x) <- gsub("^u_char$", "u<sub>char</sub>", colnames(x))
+    colnames(x) <- gsub("^u_com$", "u<sub>com</sub>", colnames(x))
+    colnames(x) <- gsub("^cert_val$", "\u00B5<sub>c</sub>", colnames(x))
+    dt <- DT::datatable(
+      data = x,
+      editable = list(target = "cell", disable = non_edit_cols),
+      options = list(
+        dom = "t", paging = FALSE, scrollX = TRUE, ordering = FALSE,
+        columnDefs = list(
+          list("width" = paste0(max(c(60, nchar(as.character(x[, "analyte"])) * 9)), "px"), "targets" = which(colnames(x) %in% c("analyte")) - 1),
+          list("width" = "80px", "targets" = which(!(colnames(x) %in% c("analyte", "n", "k", "unit"))) - 1),
+          list("width" = "30px", "targets" = which(colnames(x) %in% c("n", "k")) - 1)
+        )
+      ),
+      rownames = NULL, escape = FALSE, selection = list(mode = "single", target = "row", selected = selected_row)
+    )
+    dt <- DT::formatCurrency(table = dt, columns = u_cols, currency = "", digits = precision_U)
+    # if (!is.null(prec_exp)) dt <- DT::formatCurrency(table = dt, columns = "cert_val", currency = "", digits = prec_exp)
+    if (!is.null(prec_exp)) {
+      #dt <- DT::formatCurrency(table = dt, columns = "\u00B5<sub>c</sub>", currency = "", digits = prec_exp)
+    }
+    return(dt)
+  } else {
+    # return flextable for Word report
+    for (idx in u_cols) {
+      if (any(is.finite(x[,idx]))) x[is.finite(x[,idx]),idx] <- sprintf("%.04f", round(x[is.finite(x[,idx]),idx], precision_U))
+    }
+    x[,"cert_val"] <- as.character(x[,"cert_val"])
+    x[,"U_abs"] <- as.character(x[,"U_abs"])
+    x[,"mean"] <- as.character(x[,"mean"])
+    x[,"sd"] <- as.character(x[,"sd"])
+    ft <- ft_default(df = x, caption = "Material properties and accociated uncertainties", id = "Tab.C3", output = output, HTML2ft = TRUE)
+    ft <- flextable::align(ft, j = !(colnames(x) %in% c("analyte","unit")), align = "right", part = "all")
+    ft <- flextable::compose(x = ft, j = which(colnames(x)=="cert_val"), value = flextable::as_paragraph("\u00B5", flextable::as_sub("c")), part = "header")
+    ft <- flextable::compose(x = ft, j = which(colnames(x)=="U_abs"), value = flextable::as_paragraph("U", flextable::as_sub("abs")), part = "header")
+    ft <- flextable::compose(x = ft, j = which(colnames(x)=="u_char"), value = flextable::as_paragraph("u", flextable::as_sub("char")), part = "header")
+    ft <- flextable::compose(x = ft, j = which(colnames(x)=="u_com"), value = flextable::as_paragraph("u", flextable::as_sub("com")), part = "header")
+    fw <- 16 # full page width
+    ft <- flextable::width(ft, j = "unit", width = 1, unit = "cm")
+    ft <- flextable::width(ft, j = c("n","k"), width = 0.6, unit = "cm")
+    ft <- flextable::width(ft, j = !(colnames(x) %in% c("analyte","n","k","unit")), width = 1.2, unit = "cm")
+    ft <- flextable::width(ft, j = "analyte", width = fw-2*0.6-0.9-sum(!(colnames(x) %in% c("analyte","n","k","unit")))*1.2, unit = "cm")
+    return(ft)
   }
-  return(dt)
 }

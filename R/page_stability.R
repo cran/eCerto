@@ -9,17 +9,12 @@
 #'
 #' @examples
 #' if (interactive()) {
-#'   shiny::shinyApp(
-#'     ui = shiny::fluidPage(
-#'       shinyjs::useShinyjs(),
-#'       eCerto:::page_StabilityUI(id = "test")
-#'     ),
+#'  test_nav_panel_app(
+#'     panel = app_panels()$S,
 #'     server = function(input, output, session) {
-#'       # rv <- eCerto::eCerto$new(eCerto:::init_rv()) # initiate persistent variables
-#'       # shiny::isolate({eCerto::setValue(rv, c("Stability","data"), eCerto:::test_Stability_Excel() )})
 #'       rv <- eCerto:::test_rv(type = "SR3")
 #'       shiny::isolate(eCerto::setValue(rv, c("Stability", "data"), eCerto:::test_Stability_Arrhenius()))
-#'       eCerto:::page_StabilityServer(id = "test", rv = rv)
+#'       eCerto:::page_StabilityServer(id = "Stability", rv = rv)
 #'     }
 #'   )
 #' }
@@ -29,7 +24,7 @@ page_StabilityUI <- function(id) {
   tab_S1_panel <- bslib::card(
     bslib::card_header(
       class = "d-flex justify-content-between",
-      shiny::strong(shiny::actionLink(inputId = ns("tab_link"), label = "Tab.S1 - calculation of uncertainty contribution")),
+      shiny::strong(shiny::actionLink(inputId = ns("tab_link"), label = shiny::HTML("Tab.S1 - calculation of<br>uncertainty contribution"))),
       shiny::div(
         shiny::div(
           style = "float: right; margin-left: 15px;",
@@ -37,11 +32,14 @@ page_StabilityUI <- function(id) {
         ),
         shiny::div(
           style = "float: left; margin-left: 15px;",
-          shiny::checkboxInput(inputId = ns("s_adjust"), width = 130, label = shiny::HTML("P-value adjust-<br>ment (bonferroni)"), value = TRUE)
+          shiny::checkboxInput(inputId = ns("s_adjust"), width = 110, label = shiny::HTML("P-val. adj.<br>(bonferroni)"), value = TRUE)
+        ),
+        shiny::div(
+          style = "float: left; margin-left: 15px;",
+          shiny::checkboxInput(inputId = ns("optimize_u_stab"), width = 90, value = FALSE, label = shiny::HTML("t<sub>max</sub>")) |> bslib::tooltip("Include a column calculating the maximum possible shelf life in Tab.S1"),
         )
       )
     ),
-    #bslib::card_body(max_height = 600,
     bslib::card_body(
       shiny::div(DT::DTOutput(ns("s_tab1"))),
       shinyjs::hidden(shiny::radioButtons(inputId = ns("time_fmt"), label = "Time format in lm", choices = c("mon", "day"), selected = "mon"))
@@ -53,11 +51,13 @@ page_StabilityUI <- function(id) {
 
   fig_S1_panel <- bslib::card(
     id = ns("fig_S1_panel"),
-    style = "resize:vertical;",
     bslib::card_header(
       class = "d-flex justify-content-between",
       shiny::strong(shiny::actionLink(inputId = ns("fig1_link"), label = "Fig.S1 - linear model plot")),
-      shiny::div(style = "float: left; margin-left: 15px;", shiny::downloadButton(ns("s_Report"), label = "Download Report"))
+      shiny::div(
+        shiny::div(style = "float: left; margin-left: 15px;", shiny::downloadButton(ns("s_Report"), label = "Download Report")),
+        shiny::div(style = "float: left; margin-left: 15px;", shiny::radioButtons(inputId = ns("ReportFormat"), label = NULL, choices = list("HTML"="html", "DOCX"="docx"), width = 70))
+      ),
     ),
     bslib::card_body(
       bslib::layout_sidebar(
@@ -73,7 +73,6 @@ page_StabilityUI <- function(id) {
             shiny::div(style = "margin-top: -12px;", shiny::radioButtons(inputId = ns("s_sel_dev"), label = NULL, choiceValues = list("2s", "U"), choiceNames = list("2s", shiny::HTML("U<sub>abs</sub>")), inline = TRUE)),
             shiny::hr(),
             shiny::sliderInput(inputId = ns("s_shelf_life"), label = shiny::HTML("Exp. shelf life t<sub>cert</sub> [Month]"), min = 0, max = 120, value = 60, step = 6),
-            shiny::checkboxInput(inputId = ns("optimize_u_stab"), value = FALSE, label = shiny::HTML("Optimize u<sub>stab</sub>")),
             shinyWidgets::pickerInput(inputId = ns("s_sel_temp"), label = "Use Temp level", choices = "", multiple = TRUE),
             shinyWidgets::pickerInput(inputId = ns("s_samples_filtered"), label = "Exclude IDs", choices = "", multiple = TRUE, options = list(container = "body"))
           )
@@ -83,34 +82,17 @@ page_StabilityUI <- function(id) {
     )
   )
 
-  shiny::tabsetPanel(
-    id = ns("StabilityPanel"),
-    type = "hidden",
-    # when nothing is loaded
-    shiny::tabPanel(
-      title = "standby-Panel",
-      value = "standby",
-      "nothing has uploaded yet"
+  shiny::tagList(
+    bslib::layout_columns(
+      fill = FALSE,
+      tab_S1_panel,
+      fig_S1_panel,
+      col_widths = bslib::breakpoints(
+        sm = c(12, 12),
+        xl = c(4, 8)
+      )
     ),
-    # when something is loaded
-    shiny::tabPanel(
-      title = "active-Panel",
-      value = "loaded",
-      bslib::layout_columns(
-        shiny::tagList(
-          tab_S1_panel
-        ),
-        shiny::tagList(
-          fig_S1_panel
-        ),
-        col_widths =  bslib::breakpoints(
-          sm = c(12, 12),
-          xl = c(4, 8)
-        )
-      ),
-      shiny::div(id = ns("arrhenius_panel"), m_arrheniusUI(id = ns("arrhenius")))
-    )
-
+    shiny::div(id = ns("arrhenius_panel"), m_arrheniusUI(id = ns("arrhenius")))
   )
 }
 
@@ -237,14 +219,6 @@ page_StabilityServer <- function(id, rv) {
       if (!identical(s_pars$s_shelf_life, input$s_shelf_life)) shiny::updateSliderInput(inputId = "s_shelf_life", value = s_pars$s_shelf_life)
     })
 
-    shiny::observeEvent(rv$e_present(), {
-      if (rv$e_present()["Stability"]) {
-        shiny::updateTabsetPanel(session = session, "StabilityPanel", selected = "loaded")
-      } else {
-        shiny::updateTabsetPanel(session = session, "StabilityPanel", selected = "standby")
-      }
-    })
-
     # the complete data table of stability data as a local copy
     s_Data <- shiny::reactive({
       shiny::req(getValue(rv, c("Stability", "data")))
@@ -272,7 +246,7 @@ page_StabilityServer <- function(id, rv) {
     s_vals <- shiny::reactive({
       shiny::req(s_Data(), input$s_shelf_life)
       s_dat <- s_Data()[!(rownames(s_Data()) %in% s_pars$s_samples_filtered),]
-      out <- prepTabS1(x = s_dat, time_fmt = input$time_fmt, t_cert = input$s_shelf_life, slope_of_means = s_pars$slope_of_means, mt = getValue(rv, c("General", "materialtabelle")), optimize_u_stab = input$optimize_u_stab, adjust = input$s_adjust)
+      out <- prepTabS1(x = s_dat, time_fmt = input$time_fmt, t_cert = input$s_shelf_life, slope_of_means = s_pars$slope_of_means, mt = getValue(rv, c("General", "materialtabelle")), adjust = input$s_adjust)
       setValue(rv, c("Stability", "s_vals"), out)
       return(out)
     })
@@ -290,7 +264,7 @@ page_StabilityServer <- function(id, rv) {
     output$s_tab1 <- DT::renderDataTable({
       shiny::req(s_vals())
       s_tab1_current$redraw
-      styleTabS1(x = s_vals(), mt = getValue(rv, c("General", "materialtabelle")), sr = s_tab1_current$row)
+      styleTabS1(x = s_vals(), mt = getValue(rv, c("General", "materialtabelle")), optimize_u_stab = input$optimize_u_stab, sr = s_tab1_current$row)
     })
     shiny::observeEvent(input$s_tab1_rows_selected, {
       if (is.null(input$s_tab1_rows_selected)) {
@@ -324,22 +298,24 @@ page_StabilityServer <- function(id, rv) {
     }, ignoreNULL = TRUE, ignoreInit = FALSE)
 
     # Fig.S1
-    output$s_plot <- shiny::renderPlot({
+    output$s_plot <- renderPlotHD({
       shiny::req(s_Data(), S_analyte())
       s_dat <- s_Data()[!(rownames(s_Data()) %in% s_pars$s_samples_filtered),]
+      mt <- getValue(rv, c("General", "materialtabelle"))
       plot_lts_data(
         x = prepFigS1(
           s = s_dat,
           an = S_analyte(),
           apm = getValue(rv, c("General", "apm")),
           U_Def = input$s_sel_dev,
-          mt = getValue(rv, c("General", "materialtabelle"))
+          mt = mt
         ),
         type = as.numeric(input$plot_type),
         t_cert = input$s_shelf_life,
         slope_of_means = s_pars$slope_of_means,
         show_legend = s_pars$show_legend,
-        show_ids = s_pars$show_ids
+        show_ids = s_pars$show_ids,
+        k = mt[mt$analyte==S_analyte(),"k"]
       )
     })
 
@@ -348,7 +324,7 @@ page_StabilityServer <- function(id, rv) {
 
     # download report
     output$s_Report <- shiny::downloadHandler(
-      filename = function() { "Stability_report.html" },
+      filename = function() { paste0("Stability_Report.", input$ReportFormat) },
       content = function(file) {
         render_report_S(
           file = file,

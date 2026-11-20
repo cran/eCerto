@@ -37,7 +37,7 @@ pn <- function(n = NULL, p = 4L) {
   # n : numeric vector
   # p : precision after the decimal sign
   # output : numbers formatted in identical width as character using scientific notation for numbers < p and rounding to p otherwise
-  if (any(is.finite(n))) {
+  if (is.numeric(n) && any(is.finite(n))) {
     w <- max(nchar(round(n)), na.rm = TRUE) + p + 1 # determine maximum width required
     o <- rep(paste(rep(" ", w), collapse = ""), length(n))
     o[is.finite(n)] <- sprintf(paste0("%*.", p, "f"), w, n[is.finite(n)])
@@ -613,7 +613,7 @@ warning_or_modal <- function(x, type = c("warning", "info", "success", "error"))
   if (!is.null(shiny::getDefaultReactiveDomain())) {
     shinyWidgets::show_alert(
       title = NULL,
-      type = "error",
+      type = type,
       text = x,
       closeOnClickOutside = TRUE
     )
@@ -654,6 +654,269 @@ decimal_count <- function(x) {
   return(x)
 }
 
+#' Convert Markdown String to R Plotmath Expression
+#'
+#' Parses a character string containing markdown-style formatting syntax and
+#' converts it into an R plotmath expression suitable for use in plot labels
+#' and annotations.
+#'
+#' @param x A character vector. Only the first element is used.
+#' @param vectorize Set TRUE to process all elements of x returning a list of expressions.
+#'
+#' @details
+#' The following markdown syntax is supported:
+#' \itemize{
+#'   \item \code{**text**} — bold
+#'   \item \code{*text*} — italic
+#'   \item \code{base^sup^} — superscript
+#'   \item \code{base~sub~} — subscript
+#' }
+#' Formatting can be nested (e.g., bold inside superscript).
+#' The returned expression can be passed directly to \code{plot()} arguments
+#' such as \code{main}, \code{xlab}, or \code{ylab}, or to \code{expression()}.
+#'
+#' @return A language object (R expression) suitable for use in plotting
+#'   functions that support plotmath.
+#'
+#' @seealso \code{\link[grDevices]{plotmath}}
+#'
+#' @examples
+#' markdown2expression("**bold text**")
+#' markdown2expression("*italic text*")
+#' markdown2expression("x^2^")
+#' markdown2expression("H~2~O")
+#' markdown2expression("**H~2~O**")
+#' plot(1,1, main = markdown2expression("R^2^ = 0.99"), pch=".")
+#' text(1,1, markdown2expression("Water = **H~2~O**"))
+#'
+#' @export
+markdown2expression <- function(x, vectorize = FALSE) {
+  stopifnot(is.character(x))
+
+  if (vectorize) {
+    return(lapply(x, function(xi) markdown2expression(xi, vectorize = FALSE)))
+  }
+
+  if (length(x) > 1) {
+    warning("Only first element of x is used. Use vectorize = TRUE to process all elements.")
+  }
+
+  s <- x[[1]]
+
+  if (!nzchar(s)) return(expression("")[[1]])
+
+  # Greek letter lookup
+  greek_letters <- c(
+    "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta",
+    "iota", "kappa", "lambda", "mu", "nu", "xi", "pi", "rho", "sigma",
+    "tau", "upsilon", "phi", "chi", "psi", "omega",
+    "Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta",
+    "Iota", "Kappa", "Lambda", "Mu", "Nu", "Xi", "Pi", "Rho", "Sigma",
+    "Tau", "Upsilon", "Phi", "Chi", "Psi", "Omega"
+  )
+
+  #-----------------------------------------
+  # Tokenizer
+  #-----------------------------------------
+  tokenize <- function(s) {
+    tokens <- list()
+    i <- 1
+    n <- nchar(s)
+    getc <- function(i) substr(s, i, i)
+    buffer <- ""
+
+    flush <- function() {
+      if (nzchar(buffer)) {
+        tokens[[length(tokens) + 1]] <<- list(type = "text", value = buffer)
+        buffer <<- ""
+      }
+    }
+
+    while (i <= n) {
+      ch <- getc(i)
+
+      # escape character
+      if (ch == "\\" && i < n) {
+        buffer <- paste0(buffer, getc(i + 1))
+        i <- i + 2
+        next
+      }
+
+      # Greek letters {name}
+      if (ch == "{") {
+        j <- i + 1
+        while (j <= n && getc(j) != "}") j <- j + 1
+        if (j > n) stop("Unclosed '{' for Greek letter")
+        inner <- substr(s, i + 1, j - 1)
+        if (inner %in% greek_letters) {
+          flush()
+          tokens[[length(tokens) + 1]] <- list(type = "greek", value = inner)
+          i <- j + 1
+          next
+        } else {
+          # not a greek letter, treat as normal text
+          buffer <- paste0(buffer, substr(s, i, j))
+          i <- j + 1
+          next
+        }
+      }
+
+      # bold-italic ***
+      if (ch == "*" && i + 2 <= n && getc(i + 1) == "*" && getc(i + 2) == "*") {
+        flush()
+        j <- i + 3
+        while (j + 2 <= n && !(getc(j) == "*" && getc(j + 1) == "*" && getc(j + 2) == "*")) j <- j + 1
+        if (j + 2 > n) stop("Unclosed '***' for bold-italic")
+        inner <- substr(s, i + 3, j - 1)
+        tokens[[length(tokens) + 1]] <- list(type = "bolditalic", value = tokenize(inner))
+        i <- j + 3
+        next
+      }
+
+      # bold **
+      if (ch == "*" && i < n && getc(i + 1) == "*") {
+        flush()
+        j <- i + 2
+        while (j + 1 <= n && !(getc(j) == "*" && getc(j + 1) == "*")) j <- j + 1
+        if (j + 1 > n) stop("Unclosed '**' for bold")
+        inner <- substr(s, i + 2, j - 1)
+        tokens[[length(tokens) + 1]] <- list(type = "bold", value = tokenize(inner))
+        i <- j + 2
+        next
+      }
+
+      # italic *
+      if (ch == "*") {
+        flush()
+        j <- i + 1
+        while (j <= n && getc(j) != "*") j <- j + 1
+        if (j > n) stop("Unclosed '*' for italic")
+        inner <- substr(s, i + 1, j - 1)
+        tokens[[length(tokens) + 1]] <- list(type = "italic", value = tokenize(inner))
+        i <- j + 1
+        next
+      }
+
+      # superscript ^content^
+      if (ch == "^") {
+        flush()
+        if (length(tokens) == 0) stop("Superscript '^' without base")
+        base_tok <- tokens[[length(tokens)]]
+        tokens <- tokens[-length(tokens)]
+        i <- i + 1
+        start <- i
+        while (i <= n && getc(i) != "^") i <- i + 1
+        if (i > n) stop("Unclosed '^' for superscript")
+        sup <- substr(s, start, i - 1)
+        tokens[[length(tokens) + 1]] <- list(type = "sup", base = base_tok, value = tokenize(sup))
+        i <- i + 1
+        next
+      }
+
+      # subscript ~content~
+      if (ch == "~") {
+        flush()
+        if (length(tokens) == 0) stop("Subscript '~' without base")
+        base_tok <- tokens[[length(tokens)]]
+        tokens <- tokens[-length(tokens)]
+        i <- i + 1
+        start <- i
+        while (i <= n && getc(i) != "~") i <- i + 1
+        if (i > n) stop("Unclosed '~' for subscript")
+        subtxt <- substr(s, start, i - 1)
+        tokens[[length(tokens) + 1]] <- list(type = "sub", base = base_tok, value = tokenize(subtxt))
+        i <- i + 1
+        next
+      }
+
+      # newline
+      if (ch == "\n") {
+        flush()
+        tokens[[length(tokens) + 1]] <- list(type = "newline")
+        i <- i + 1
+        next
+      }
+
+      buffer <- paste0(buffer, ch)
+      i <- i + 1
+    }
+
+    flush()
+    tokens
+  }
+
+  format_text_token <- function(txt) {
+    if (grepl("^[A-Za-z]$", txt)) return(txt)
+    if (grepl("^[0-9]+$", txt)) return(txt)
+    paste0("\"", txt, "\"")
+  }
+
+  #-----------------------------------------
+  # Renderer
+  #-----------------------------------------
+  render <- function(tokens) {
+    parts <- sapply(tokens, function(tok) {
+      if (tok$type == "text")      return(format_text_token(tok$value))
+      if (tok$type == "greek")     return(tok$value)
+      if (tok$type == "bold")      return(paste0("bold(", render(tok$value), ")"))
+      if (tok$type == "italic")    return(paste0("italic(", render(tok$value), ")"))
+      if (tok$type == "bolditalic")return(paste0("bolditalic(", render(tok$value), ")"))
+      if (tok$type == "sup")       return(paste0(render(list(tok$base)), "^", render(tok$value)))
+      if (tok$type == "sub")       return(paste0(render(list(tok$base)), "[", render(tok$value), "]"))
+      if (tok$type == "newline")   return("atop(")
+    })
+
+    # handle atop() for newlines
+    if ("atop(" %in% parts) {
+      idx <- which(parts == "atop(")
+      before <- paste(parts[seq_len(idx - 1)], collapse = "*")
+      after  <- paste(parts[(idx + 1):length(parts)], collapse = "*")
+      return(paste0("atop(", before, ",", after, ")"))
+    }
+
+    paste(parts, collapse = "*")
+  }
+
+  tokens <- tokenize(s)
+  expr_string <- render(tokens)
+  parse(text = expr_string)[[1]]
+}
+
+#' @title endmod
+#' @description Function to modify table header endings into HTML or markdown.
+#' @param x A character vector.
+#' @param type type.
+#' @param fmt fmt.
+#' @param spacer spacer.
+#' @examples
+#' x <- paste("Text", c("1","i","min","bb,k"), sep="_")
+#' df <- ldply_base(c("*", "~", "^"), function(type) {
+#'   data.frame(
+#'     "char" = x,
+#'     "md" = endmod(x, type = type, fmt = "md"),
+#'     "html" = endmod(x, type = type, fmt = "html")
+#'    )
+#' })
+#' ft_default(df)
+#' df2 <- as.data.frame(as.list(setNames(1:12, df[,"html"])), check.names = FALSE)
+#' ft_default(df = df2)
+#'
+#' @keywords internal
+#' @noRd
+endmod <- function(x, type = c("*", "**", "~", "^"), fmt = c("md", "html"), spacer = "") {
+  type <- match.arg(type)
+  fmt <- match.arg(fmt)
+  sub <- sub("^.*?_(.+)$", "\\1", x)
+  main <- sub("_.+$", "", x)
+  if (identical(main, x)) return(x)
+  if (fmt == "html") {
+    htag <- switch(type, "*" = "i", "**" = "b", "~" = "sub", "^" = "sup")
+    paste0(main, "<", htag, ">", spacer, sub, "</", htag, ">")
+  } else {
+    paste0(main, type, sub, type)
+  }
+}
+
 #' @title HTML2markdown.
 #' @description Function to convert HTML tags into the markdown equivalent.
 #' @param x A character vector.
@@ -679,6 +942,360 @@ HTML2markdown <- function(x) {
   x <- gsub("<strong>", "**", x)
   x <- gsub("</strong>", "**", x)
   return(x)
+}
+
+#' @title markdown2HTML.
+#' @description Function to convert markdown tags into the HTML equivalent.
+#' @param x A character vector.
+#' @examples
+#' \dontrun{
+#'   x <- c("x<sub>i</sub>", "This is <i>formatted</i> <b>HTM<sup>L</sup></b>")
+#'   HTML2markdown(x)
+#'   markdown2HTML(HTML2markdown(x))
+#' }
+#' @return Numeric.
+#' @keywords internal
+#' @noRd
+markdown2HTML <- function(x) {
+  stopifnot(is.character(x))
+  x <- gsub("\\*\\*(.+?)\\*\\*", "<b>\\1</b>", x, perl = TRUE) # bold first to avoid conflicts with italic
+  x <- gsub("\\*(.+?)\\*", "<i>\\1</i>", x, perl = TRUE) # Italic
+  x <- gsub("~(.+?)~", "<sub>\\1</sub>", x, perl = TRUE) # Subscript
+  x <- gsub("\\^(.+?)\\^", "<sup>\\1</sup>", x, perl = TRUE) # Superscript
+  return(x)
+}
+
+#' @title HTML2markdown.
+#' @description Function to convert HTML tags into the markdown equivalent.
+#' @param x A character vector.
+#' @examples
+#' \dontrun{
+#'   x <- data.frame("ft"=c("x<sub>i</sub>", "This is <i>formatted</i> <b>HTM<sup>L</sup></b>"))
+#'   ft <- flextable::flextable(x)
+#'   x_ft <- lapply(x[,1], HTML2ft)
+#'   for (i in 1:2) {
+#'     ft <- flextable::compose(x = ft, i = i, j = 1, value = x_ft[[i]], part = "body")
+#'   }
+#'   ft
+#' }
+#' @return Numeric.
+#' @keywords internal
+#' @noRd
+HTML2ft <- function(x) {
+  stopifnot(is.character(x), length(x) == 1)
+  tokens <- regmatches(x, gregexpr("(<[^>]+>|[^<]+)", x, perl = TRUE))[[1]]
+  stack <- list()
+  output_runs <- list()
+  apply_format_stack <- function(text, stack) {
+    run <- text
+    for (fmt in rev(stack)) {
+      if (fmt == "sub") run <- flextable::as_sub(run)
+      else if (fmt == "sup") run <- flextable::as_sup(run)
+      else if (fmt == "i")  run <- flextable::as_i(run)
+      else if (fmt == "b")  run <- flextable::as_b(run)
+    }
+    run
+  }
+  for (tok in tokens) {
+    if (tok %in% c("<sub>", "<sup>", "<i>", "<b>", "<strong>")) {
+      fmt <- switch(tok,
+                    "<sub>"    = "sub",
+                    "<sup>"    = "sup",
+                    "<i>"      = "i",
+                    "<b>"      = "b",
+                    "<strong>" = "b"
+      )
+      stack <- c(stack, fmt)
+      next
+    }
+    if (tok %in% c("</sub>", "</sup>", "</i>", "</b>", "</strong>")) {
+      fmt <- switch(tok,
+                    "</sub>"    = "sub",
+                    "</sup>"    = "sup",
+                    "</i>"      = "i",
+                    "</b>"      = "b",
+                    "</strong>" = "b"
+      )
+      if (any(stack == fmt)) {
+        last_idx <- utils::tail(which(stack == fmt), 1L)
+        stack <- stack[-last_idx]
+      }
+      next
+    }
+    if (nzchar(tok)) {
+      output_runs <- append(output_runs, list(apply_format_stack(tok, stack)))
+    }
+  }
+  do.call(flextable::as_paragraph, output_runs)
+}
+
+#' @title ft_formatter_fixed_digits.
+#' @description flextable column formatter function.
+#' @param digits number of digits post decimal separator to show (not rounding).
+#' @param predicate predicate function of column type to act on, here: is.numeric.
+#' @keywords internal
+#' @noRd
+ft_formatter_fixed_digits <- function(digits, predicate = is.numeric) {
+  force(digits); force(predicate)
+  fun <- function(x) sprintf(paste0("%.", digits, "f"), x)
+  attr(fun, "predicate") <- predicate
+  fun
+}
+
+#' @title ft_set_formatter.
+#' @description Function to apply a flextable column formatter function to an ft using col indices instead of col_keys.
+#' @param ft ft.
+#' @param j_idx The column indices.
+#' @param fmt formatter function.
+#' @param ... arguments to formatter function.
+#' @param verbose verbose.
+#' @keywords internal
+#' @noRd
+ft_set_formatter <- function(ft, j_idx, fmt, ..., predicate = is.numeric, verbose = TRUE) {
+  stopifnot(!is.null(ft$body$dataset))
+  keys_all <- ft$col_keys[j_idx]
+  ds       <- ft$body$dataset
+
+  fmt_fun  <- fmt(...)
+  predicate <- attr(fmt_fun, "predicate", exact = TRUE)
+  if (!is.null(predicate)) {
+    # check column type
+    is_ok <- vapply(keys_all, function(k) predicate(ds[[k]]), logical(1))
+    keys  <- keys_all[is_ok]
+  } else {
+    is_ok <- TRUE
+  }
+
+  if (verbose && any(!is_ok)) {
+    message("set_formatter: omit formatting columns with wrong type: ", paste(keys_all[!is_ok], collapse = ", "))
+  }
+  if (length(keys) == 0L) return(ft)
+
+  mapping <- stats::setNames(rep(list(fmt_fun), length(keys)), keys)
+  ft <- do.call(flextable::set_formatter, c(list(ft), mapping))
+  return(ft)
+}
+
+#' @title ft_default.
+#' @description flextable eCerto default output.
+#' @param df df to format as flextable.
+#' @param caption caption text.
+#' @param id table id (to prepend in caption.
+#' @examples
+#' x <- data.frame("X<sub>i</sub>"=c(1.2, 1.234, 1234.56789), check.names = FALSE)
+#' ft_default(df = x)
+#' ft_default(df = x, output = "ft_HTML")
+#' ft_default(df = x, id = "Tab.1", caption = "This is a caption")
+#' ft_default(df = x, HTML2ft = FALSE)
+#' ft_default(df = x, prec = 2)
+#' @keywords internal
+#' @noRd
+ft_default <- function(df, caption = NULL, id = NULL, output = "ft", HTML2ft = TRUE, prec = NULL, ...) {
+  eCerto_flextable_defaults(...)
+  ft <- flextable::flextable(df)
+  ft <- eCerto_flextable_defaults(ft = ft, output = output, HTML2ft = HTML2ft, prec = prec)
+  if (!is.null(caption)) {
+    if (is.null(id)) {
+      ft <- flextable::set_caption(ft, caption = caption)
+    } else {
+      ft <- flextable::set_caption(ft, caption = flextable::as_paragraph(flextable::as_b(id), " ", caption))
+    }
+  }
+  return(ft)
+}
+
+#' @title eCerto_flextable_defaults.
+#' @description Function to ensure consistent table layout defaults in eCerto for flextables.
+#' @param ft Optional flextable object to apply default styling to.
+#' @param output Output type to set defaults for.
+#' @param HTML2ft Convert HTML formatting in header automatically.
+#' @return NULL.
+#' @keywords internal
+#' @noRd
+eCerto_flextable_defaults <- function(ft = NULL, output = "ft", HTML2ft = TRUE, prec = NULL, ...) {
+  flextable::set_flextable_defaults(
+    table_align = "left",
+    font.size = ifelse(output == "ft", 9, 11),
+    line_spacing = ifelse(output == "ft", 1, 1.25),
+    padding = 2,
+    table.layout = "autofit",
+    ...
+  )
+  if (!is.null(ft)) {
+    ft <- flextable::fontsize(ft, size = ifelse(output == "ft", 9, 11), part = "all")
+    ft <- flextable::line_spacing(ft, space = ifelse(output == "ft", 1, 1.25), part = "all")
+    if (HTML2ft) {
+      for (j in grep("<.+>.+</.+>", colnames(ft$body$dataset))) {
+        ft <- flextable::compose(x = ft, j = j, value = HTML2ft(colnames(ft$body$dataset)[j]), part = "header")
+      }
+    }
+    if (!is.null(prec) && is.numeric(prec)) {
+      num_cols <- sapply(1:ncol(ft$body$dataset), function(i) {is.numeric(ft$body$dataset[,i])})
+      ft <- ft_set_formatter(ft, num_cols, ft_formatter_fixed_digits, prec)
+    }
+    ft <- flextable::bold(ft, part = "header")
+    ft <- flextable::bg(ft, bg = grDevices::grey(0.85), part = "header")
+    if (nrow(ft$body$dataset)>=3) ft <- flextable::bg(ft, i = seq(2, nrow(ft$body$dataset), 2), bg = grDevices::grey(0.95), part = "body")
+  }
+  return(ft)
+}
+
+#' @title renderPlotHD.
+#' @description Wrapper function to improve readability of plots.
+#' @return NULL.
+#' @keywords internal
+#' @noRd
+renderPlotHD <- function(expr, res = 72*1.25, env = parent.frame(), ...) {
+  shiny::renderPlot(substitute(expr), res = res, env = env, quoted = TRUE, ...)
+}
+
+#' @title DTtable.
+#' @description Wrapper function to improve readability of plots.
+#' @return NULL.
+#' @keywords internal
+#' @noRd
+DTtable <- function(id) {
+  css <- shiny::tags$style(
+    "
+    .ecerto-dt table.dataTable {
+      width: auto !important;
+    }
+    .ecerto-dt .dataTables_wrapper {
+      width: auto !important;
+    }
+    "
+  )
+  shiny::tagList(
+    css,
+    shiny::div(class = "ecerto-dt", DT::dataTableOutput(outputId = id))
+  )
+}
+
+#' @title show_upload_example_table.
+#' @description Will generate a flextable object resembling an Excel table.
+#' @param x data.frame to be shown as example table.
+#' @param max_char Maximum number of characters to show per cell (default: 10, use Inf for no limit).
+#' @param optional Optional column indices to be shown in italic and grey color (e.g. to indicate optional columns in the upload template).
+#' @param continued Logical indicating whether to add a final row with "..." to indicate that the table can be longer.
+#' @return flextable.
+#' @examples
+#' x <- eCerto:::test_homog()$data[1:15,1:4]
+#' show_upload_example_table(x=x)
+#' show_upload_example_table(x=x, optional=2)
+#' @keywords internal
+#' @noRd
+show_upload_example_table <- function(x, max_char = 10, optional = NULL, continued = TRUE) {
+  stopifnot(is.data.frame(x))
+  n_rows <- nrow(x)
+  n_cols <- ncol(x)
+  col_letters <- LETTERS[1:n_cols]
+  has_header <- !all(colnames(x) %in% LETTERS)
+  df_disp <- data.frame(" " = seq_len(max(n_rows+has_header, 1L)), check.names = FALSE)
+  to_disp_chr <- function(x) {
+    sapply(x, function(v) {
+      z <- ifelse(is.na(v), "", as.character(v))
+      if (is.infinite(max_char)) z else substr(z, 1L, max_char)
+    }, USE.NAMES=FALSE)
+  }
+  if (!is.na(shiny::resourcePaths()["www"])) {
+    icon_file <- get_local_file("excel-icon-32x32.png")
+  } else {
+    icon_file <- system.file("app/www/excel-icon-32x32.png", package = "eCerto")
+  }
+  excel_icon <- flextable::as_paragraph(flextable::as_image(src = icon_file, width = 32/96, height = 32/96, unit = "in", guess_size = FALSE))
+  if (n_cols > 0L) {
+    vals <- x
+    x_type <- sapply(1:n_cols, function(i) { class(x[,i]) })
+    if (has_header) vals <- rbind(colnames(vals), apply(vals,2,as.character))
+    colnames(vals) <- col_letters
+    df_disp <- cbind(df_disp, apply(vals, 2, to_disp_chr, simplify = FALSE), stringsAsFactors = FALSE)
+    if (continued) df_disp <- rbind(df_disp, "...")
+  }
+  ft <- flextable::flextable(df_disp)
+  ft <- flextable::compose(ft, i = 1, j = 1, part = "head", value = excel_icon)
+  grey_bg   <- "#F2F2F2"
+  grid_col  <- "#D9D9D9"
+  bd <- list(color = grid_col, width = 0.75, style = "solid")
+  ft <- flextable::border_outer(ft, part = "all", border = bd)
+  ft <- flextable::border_inner_h(ft, part = "all", border = bd)
+  ft <- flextable::border_inner_v(ft, part = "all", border = bd)
+  ft <- flextable::bg(ft, part = "header", bg = grey_bg)
+  ft <- flextable::align(ft, part = "header", align = "center")
+  if (nrow(df_disp) > 0) {
+    ft <- flextable::bg(ft, j = 1, i = seq_len(nrow(df_disp)), part = "body", bg = grey_bg)
+    ft <- flextable::align(ft, j = 1, part = "body", align = "center")
+  }
+  if (n_cols > 0) {
+    for (j in seq_len(n_cols)) {
+      x_type[j]
+      if (x_type[j] %in% c("numeric", "integer")) {
+        ft <- flextable::align(ft, j = j+1, part = "body", align = "right")
+      } else if (x_type[j]=="logical") {
+        ft <- flextable::align(ft, j = j+1, part = "body", align = "center")
+      } else if (x_type[j]=="Date") {
+        ft <- flextable::align(ft, j = j+1, part = "body", align = "center")
+      } else {
+        ft <- flextable::align(ft, j = j+1, part = "body", align = "left")
+      }
+    }
+  }
+  ft <- flextable::padding(ft, padding = 2, part = "all")
+  if (has_header) ft <- flextable::bold(ft, i = 1, j= -1, part = "body")
+  if (!is.null(optional) && is.numeric(optional) && all(optional %in% 1:n_cols)) {
+    for (j in optional) {
+      ft <- flextable::italic(ft, j = j+1, part = "body")
+      ft <- flextable::color(ft,  j = j+1, part = "body", color = "grey50")
+    }
+  }
+  ft <- flextable::padding(ft, padding = 0, i = 1, j = 1, part = "header")
+  ft <- flextable::autofit(ft)
+  return(ft)
+}
+
+#' @title LTS_upload_example_table.
+#' @description Will generate a flextable object resembling an Excel table in LTS upload format.
+#' @return flextable.
+#' @keywords internal
+#' @noRd
+LTS_upload_example_table <- function() {
+  x <- data.frame(
+    "RM" = "CRM X1",
+    "KW" = "A<sub>BET</sub>",
+    "KW_Def" = "Surface Area",
+    "KW_Unit" = "m<sup>2</sup>/g",
+    "CertVal" = 5.41,
+    "U" = 0.24,
+    "U_Def" = "1s",
+    "Device" = "ASAP2020",
+    "Method" = "Gassorption",
+    "Coef_of_Var" = 0.0443,
+    "acc_Datasets" = 30
+  )
+  ft <- show_upload_example_table(x=x, max_char = Inf, continued = FALSE)
+  for (j in c(2,4)) {
+    ft <- flextable::compose(x = ft, i = 2, j = 1+j, value = HTML2ft(x[,j]), part = "body")
+  }
+  ft <- flextable::add_body_row(ft, values = c("3", rep("", ncol(x))), top = FALSE)
+
+  y <- data.frame("Value"=round(stats::runif(30),3), "Date"=format.Date(as.Date("2011-02-03")-30:1, format = "%d.%m.%Y"), "File"=paste0("File_", 1:30, ".smp"), "Comment"=c("", "some text", ""))
+  #eCerto:::show_upload_example_table(x=y, continued = FALSE, optional = 4)
+
+  ft <- flextable::add_body_row(ft, values = c("4", colnames(y), rep("", ncol(x)-4)), top = FALSE)
+  ft <- flextable::align(ft, i =4, j = 3, part = "body", align = "center")
+  ft <- flextable::align(ft, i =4, j = 2, part = "body", align = "right")
+  ft <- flextable::italic(ft, i = 4, j = 5, part = "body")
+  ft <- flextable::color(ft, i = 4, j = 5, part = "body", color = "grey50")
+  ft <- flextable::add_body_row(ft, values = c("5", unname(unlist(y[1,])), rep("", ncol(x)-4)), top = FALSE)
+
+  for (i in 2:3) {
+    ft <- flextable::add_body_row(ft, values = c(i+4, unname(unlist(y[i,])), rep("", ncol(x)-4)), top = FALSE)
+  }
+  ft <- flextable::add_body_row(ft, values = c(rep("...", 5), rep("", ncol(x)-4)), top = FALSE)
+  ft <- flextable::add_body_row(ft, values = c(nrow(y)+4, unname(unlist(y[nrow(y),])), rep("", ncol(x)-4)), top = FALSE)
+
+  ft <- flextable::bold(ft, i = 4, j= 2:5, part = "body")
+  ft <- flextable::autofit(ft)
+  return(ft)
 }
 
 #' @title render_report
@@ -787,16 +1404,30 @@ render_report_M <- function(file = tempfile(fileext = ".html"), mt, gen) {
 #' @param rv rv.
 #' @keywords internal
 #' @noRd
-render_report_A <- function(file = tempfile(fileext = ".html"), rv) {
+# render_report_A <- function(file = tempfile(fileext = ".html"), rv) {
+#   fmt <- tolower(tools::file_ext(file))
+#   params = list(
+#     "General" = shiny::reactiveValuesToList(getValue(rv, "General")),
+#     "Certification" = shiny::reactiveValuesToList(getValue(rv, "Certification")),
+#     "Certification_processing" = shiny::reactiveValuesToList(getValue(rv, "Certification_processing"))
+#   )
+#   rmd_template <- get_local_file("report_vorlage_analyt.[Rr][Mm][Dd]$")
+#   render_report(file = file, fmt = fmt, rmd_template = rmd_template, params = params)
+# }
+
+#' @title render_report_C.
+#' @param file filename.
+#' @param rv rv.
+#' @keywords internal
+#' @noRd
+render_report_C <- function(file = tempfile(fileext = ".html"), rv) {
   fmt <- tolower(tools::file_ext(file))
-  params = list(
+  params = list(rv = list(
     "General" = shiny::reactiveValuesToList(getValue(rv, "General")),
     "Certification" = shiny::reactiveValuesToList(getValue(rv, "Certification")),
-    "Certification_processing" = shiny::reactiveValuesToList(getValue(rv, "Certification_processing")),
-    "selected_tab" = rv$cur_an,
-    "logo_file" = "BAMLogo2015.png"
-  )
-  rmd_template <- get_local_file("report_vorlage_analyt.[Rr][Mm][Dd]$")
+    "Certification_processing" = shiny::reactiveValuesToList(getValue(rv, "Certification_processing"))
+  ))
+  rmd_template <- get_local_file("report_vorlage_certification.[Rr][Mm][Dd]$")
   render_report(file = file, fmt = fmt, rmd_template = rmd_template, params = params)
 }
 
@@ -957,4 +1588,60 @@ ldply_base <- function(.data, .fun = identity, .progress = "none", .id = NA, ...
   }
 
   return(df)
+}
+
+#' @title save_link.
+#' @description Provide save link tag
+#' @param link link.
+#' @param text text.
+#' @examples
+#' save_link("KS", "https://rdrr.io/r/stats/ks.test.html")
+#' @export
+save_link <- function(text, link) {
+  paste0('<a href="', link, '" target="_blank" rel="noopener noreferrer">', text, '</a>')
+}
+
+#' @title capture_module_ui_png.
+#' @description Capture a png of a module UI for documentation purposes.
+#' @param ui_fun ui_fun.
+#' @param ... further arguments to webshot.
+#' @examples
+#' \dontrun{
+#'   # the following code will capture a png of the m_analyteUI for documentation purposes
+#'   capture_module_ui_png(ui_fun = eCerto:::m_analyteUI, vwidth = 800, vheight = 560, cliprect = c(0, 0, 760, 180))
+#'
+#'   # the following code will capture a png of a custom import/export UI for documentation purposes
+#'   M_data_import <- function(id) {
+#'     ns <- shiny::NS(id)
+#'     bslib::card(bslib::layout_sidebar(sidebar=bslib::sidebar(
+#'         width = 360,
+#'         shiny::div(
+#'           m_RDataImport_UI(ns("Rdatain")),
+#'           hr(),
+#'           m_RDataExport_UI(ns("Rdataex"))
+#'         )
+#'     )))
+#'   }
+#'   capture_module_ui_png(ui_fun = M_data_import, cliprect = c(24, 36, 336, 546))
+#'
+#'   # the following code will capture a png of the report UI
+#'   capture_module_ui_png(ui_fun = m_reportUI, cliprect = c(10, 0, 340, 280))
+#' }
+#' @return
+#' Character with path to saved png file. The default location used is app/www/rmd/fig
+#' and the default file name is derived from the name of the ui_fun argument. The default width and height are 900 and 600 pixels, respectively.
+#' @keywords internal
+#' @noRd
+capture_module_ui_png <- function(ui_fun, ...) {
+  stopifnot(is.function(ui_fun))
+  fn <- as.character(match.call()$ui_fun)
+  fn <- fn[length(fn)]
+  file <- fs::path(system.file("app/www/rmd/fig", package = "eCerto"), fn, ext = "png")
+  ui <- ui_fun(id = "documentation")
+  page <- bslib::page_fluid(ui)
+  html_file <- tempfile(fileext = ".html")
+  on.exit(unlink(html_file), TRUE)
+  htmltools::save_html(page, file = html_file, background = "white", libdir = "libs")
+  webshot2::webshot(html_file, file = file, ..., delay = 0.3)
+  normalizePath(file)
 }

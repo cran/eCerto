@@ -6,17 +6,14 @@
 #' @examples
 #' foo <- eCerto:::show_help(
 #'   #filename = system.file("app/www/rmd/start_gethelp.Rmd", package = "eCerto"),
-#'   #filename = system.file("app/www/rmd/stability_plot.Rmd", package = "eCerto"),
+#'   filename = system.file("app/www/rmd/stability_plot.Rmd", package = "eCerto"),
 #'   #filename = system.file("app/www/rmd/help_start.Rmd", package = "eCerto"),
-#'   filename = system.file("app/www/rmd/help_test.Rmd", package = "eCerto"),
 #'   show_modal = FALSE
 #' )
 #' str(foo)
-#' shiny::shinyApp(ui = bslib::page_fluid(foo), server = function(input, output) {}, options = list("width"=800))
-
+#' shiny::shinyApp(ui = bslib::page_fluid(shiny::div(style = "width: 800px;", foo)), server = function(input, output) {})
 #' @noRd
 #' @keywords internal
-#' @importFrom markdown mark_html
 show_help <- function(filename, show_modal = TRUE) {
   # check if valid path was provided and look up file in 'www' otherwise
   if (!file.exists(filename)) {
@@ -29,11 +26,27 @@ show_help <- function(filename, show_modal = TRUE) {
   help_text <- NULL
   if (length(file_in) == 1 && file.exists(file_in)) {
     e_msg(paste("Rendering Rmd file:", file_in))
+    tmp_html <- tempfile(fileext = ".html")
+    tmp_rmd <- fs::path(fs::path_dir(file_in), "tmp.rmd")
+    on.exit(unlink(x= c(tmp_html, tmp_rmd)))
+    # patch the input file to include an empty title to prevent rendering warnings
+    # when title is missing in the Rmd file
+    writeLines(text = c(
+      '---',
+      'title: "&nsbp;"',
+      '---',
+      readLines(file_in, encoding = "UTF-8")),
+      con = tmp_rmd
+    )
+    rmarkdown::render(
+      input = tmp_rmd,
+      output_file = tmp_html,
+      output_format = rmarkdown::html_fragment(),
+      quiet = TRUE
+    )
     help_text <- shiny::withMathJax(
       shiny::HTML(
-        # markdown::mark_html(file = file_in, options = "+tables+autolink+latex_math-standalone")
-        markdown::markdownToHTML(file = file_in, fragment.only = TRUE)
-        #litedown::fuse(input = file_in, output = NA)
+        paste(readLines(tmp_html, encoding = "UTF-8"), collapse = "\n")
       )
     )
     if (show_modal) {

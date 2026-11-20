@@ -9,6 +9,10 @@ app_server <- function(input, output, session) {
   # set up new R6 object upon app start
   rv <- eCerto$new(init_rv()) # initiate persistent variables
 
+  flextable::set_flextable_defaults(
+    font.family = "Arial"
+  )
+
   # message pandoc version
   message("Current pandoc version: ", rmarkdown::pandoc_version())
 
@@ -22,7 +26,7 @@ app_server <- function(input, output, session) {
   page_startServer(id = "Start", rv = rv, msession = session)
 
   # Certification Modul
-  page_CertificationServer(id = "certification", rv = rv)
+  page_CertificationServer(id = "Certification", rv = rv)
 
   # Homogeneity Modul
   page_HomogeneityServer(id = "Homogeneity", rv = rv)
