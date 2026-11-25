@@ -101,7 +101,7 @@ m_TransferUServer <- function(id, rv, type = c("H", "S")) {
             "H" = "max(s<sub>bb</sub>, s<sub>bb,min</sub>) of H<sub>type</sub>",
             "H_simple" = "max(s<sub>bb</sub>, s<sub>bb,min</sub>)",
             "S" = "values from column 'u<sub>stab</sub>'"
-          ))), b=0),
+          ))), b = 0),
           if (length(h_choices) >= 2) {
             shiny::selectInput(inputId = session$ns("H_Type"), label = NULL, width = "100%", selectize = TRUE, choices = h_choices)
           } else {
@@ -146,8 +146,8 @@ m_TransferUServer <- function(id, rv, type = c("H", "S")) {
       )
       T_row <- switch(st(),
         "H" = which(dat()[, "H_type"] == input$H_Type),
-        "H_simple" = 1:nrow(dat()),
-        "S" = 1:nrow(dat())
+        "H_simple" = seq_len(nrow(dat())),
+        "S" = seq_len(nrow(dat()))
       )
       for (i in T_row) {
         j <- which(as.character(mt[, "analyte"]) == as.character(dat()[i, "analyte"]))

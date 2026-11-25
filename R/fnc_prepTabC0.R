@@ -37,11 +37,11 @@ prepTabC0 <- function(df_list = NULL) {
     analyte <- x2[, 1]
     unit <- x2[, 2]
     # drop first (analyte name), second (unit) and File name column
-    dat <- x2[, !names(x2) %in% c(names(x2[, c(1, 2)]), "File"), drop=FALSE]
+    dat <- x2[, !names(x2) %in% c(names(x2[, c(1, 2)]), "File"), drop = FALSE]
     # create new data frame
     x3 <- data.frame(
       "analyte" = factor(rep(analyte, times = ncol(dat)), levels = analyte),
-      "replicate" = factor(rep((1:ncol(dat)), each = nrow(dat))),
+      "replicate" = factor(rep((seq_len(ncol(dat))), each = nrow(dat))),
       "value" = as.numeric(unlist(dat)),
       "unit" = as.character(rep(unit, times = ncol(dat)))
     )
@@ -72,7 +72,7 @@ prepTabC0 <- function(df_list = NULL) {
   df <- df[is.finite(df[, "value"]), ]
 
   # prepend data frame with index column
-  df <- data.frame("ID" = 1:nrow(df), df)
+  df <- data.frame("ID" = seq_len(nrow(df)), df)
 
   return(df)
 }

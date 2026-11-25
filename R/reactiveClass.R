@@ -144,8 +144,8 @@ eCerto <- R6::R6Class(
       }
       out <- ldply_base(split(data$value, data$Lab), function(x) {
         data.frame(
-          "mean" = mean(x, na.rm = T),
-          "sd" = stats::sd(x, na.rm = T),
+          "mean" = mean(x, na.rm = TRUE),
+          "sd" = stats::sd(x, na.rm = TRUE),
           "n" = sum(is.finite(x)),
           stringsAsFactors = FALSE
         )
@@ -216,7 +216,7 @@ eCerto <- R6::R6Class(
         return(private$..cAnalyte())
       } else {
         if (!identical(a, private$..cAnalyte())) {
-          if (self$e_present()["Certification"] & a %in% self$a_p("name")) {
+          if (self$e_present()["Certification"] && a %in% self$a_p("name")) {
             # set current analyte on focus in C Module and recalculate dependent reactive variables if C data are present and a is valid
             private$..cFltData <- c_filter_data(
               x = private$..eData[["Certification"]][["data"]],

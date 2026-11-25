@@ -7,7 +7,7 @@
 #' @examples
 #' x <- shiny::isolate(eCerto::getValue(eCerto:::test_rv(type = "SR3"), c("General", "materialtabelle")))
 #' eCerto:::styleTabC3(x)
-#' eCerto:::styleTabC3(x, output="ft")
+#' eCerto:::styleTabC3(x, output = "ft")
 #' @return A data table object.
 #' @keywords internal
 #' @noRd
@@ -22,10 +22,10 @@ styleTabC3 <- function(x, apm = NULL, selected_row = 1, output = c("DT", "ft", "
       x[["precision"]]
     }))
     if (!inherits(prec, "try-error") && is.numeric(prec) && all(is.finite(prec)) && length(prec) == nrow(x)) {
-      x[, "mean"] <- sapply(1:nrow(x), function(i) {
+      x[, "mean"] <- sapply(seq_len(nrow(x)), function(i) {
         round(x[i, "mean"], prec[i])
       })
-      x[, "sd"] <- sapply(1:nrow(x), function(i) {
+      x[, "sd"] <- sapply(seq_len(nrow(x)), function(i) {
         round(x[i, "sd"], prec[i])
       })
     }
@@ -45,7 +45,7 @@ styleTabC3 <- function(x, apm = NULL, selected_row = 1, output = c("DT", "ft", "
   non_edit_cols <- list(columns = which(!(colnames(x) %in% c("k", cc[, "Name"]))) - 1)
   # rename column header for temporary display
   if (nrow(cc) >= 1 && !all(cc[, "Name"] %in% colnames(x))) {
-    for (k in 1:nrow(cc)) {
+    for (k in seq_len(nrow(cc))) {
       colnames(x)[colnames(x) == cc[k, "ID"]] <- cc[k, "Name"]
     }
   }
@@ -70,29 +70,29 @@ styleTabC3 <- function(x, apm = NULL, selected_row = 1, output = c("DT", "ft", "
     dt <- DT::formatCurrency(table = dt, columns = u_cols, currency = "", digits = precision_U)
     # if (!is.null(prec_exp)) dt <- DT::formatCurrency(table = dt, columns = "cert_val", currency = "", digits = prec_exp)
     if (!is.null(prec_exp)) {
-      #dt <- DT::formatCurrency(table = dt, columns = "\u00B5<sub>c</sub>", currency = "", digits = prec_exp)
+      # dt <- DT::formatCurrency(table = dt, columns = "\u00B5<sub>c</sub>", currency = "", digits = prec_exp)
     }
     return(dt)
   } else {
     # return flextable for Word report
     for (idx in u_cols) {
-      if (any(is.finite(x[,idx]))) x[is.finite(x[,idx]),idx] <- sprintf("%.04f", round(x[is.finite(x[,idx]),idx], precision_U))
+      if (any(is.finite(x[, idx]))) x[is.finite(x[, idx]), idx] <- sprintf("%.04f", round(x[is.finite(x[, idx]), idx], precision_U))
     }
-    x[,"cert_val"] <- as.character(x[,"cert_val"])
-    x[,"U_abs"] <- as.character(x[,"U_abs"])
-    x[,"mean"] <- as.character(x[,"mean"])
-    x[,"sd"] <- as.character(x[,"sd"])
+    x[, "cert_val"] <- as.character(x[, "cert_val"])
+    x[, "U_abs"] <- as.character(x[, "U_abs"])
+    x[, "mean"] <- as.character(x[, "mean"])
+    x[, "sd"] <- as.character(x[, "sd"])
     ft <- ft_default(df = x, caption = "Material properties and accociated uncertainties", id = "Tab.C3", output = output, HTML2ft = TRUE)
-    ft <- flextable::align(ft, j = !(colnames(x) %in% c("analyte","unit")), align = "right", part = "all")
-    ft <- flextable::compose(x = ft, j = which(colnames(x)=="cert_val"), value = flextable::as_paragraph("\u00B5", flextable::as_sub("c")), part = "header")
-    ft <- flextable::compose(x = ft, j = which(colnames(x)=="U_abs"), value = flextable::as_paragraph("U", flextable::as_sub("abs")), part = "header")
-    ft <- flextable::compose(x = ft, j = which(colnames(x)=="u_char"), value = flextable::as_paragraph("u", flextable::as_sub("char")), part = "header")
-    ft <- flextable::compose(x = ft, j = which(colnames(x)=="u_com"), value = flextable::as_paragraph("u", flextable::as_sub("com")), part = "header")
+    ft <- flextable::align(ft, j = !(colnames(x) %in% c("analyte", "unit")), align = "right", part = "all")
+    ft <- flextable::compose(x = ft, j = which(colnames(x) == "cert_val"), value = flextable::as_paragraph("\u00B5", flextable::as_sub("c")), part = "header")
+    ft <- flextable::compose(x = ft, j = which(colnames(x) == "U_abs"), value = flextable::as_paragraph("U", flextable::as_sub("abs")), part = "header")
+    ft <- flextable::compose(x = ft, j = which(colnames(x) == "u_char"), value = flextable::as_paragraph("u", flextable::as_sub("char")), part = "header")
+    ft <- flextable::compose(x = ft, j = which(colnames(x) == "u_com"), value = flextable::as_paragraph("u", flextable::as_sub("com")), part = "header")
     fw <- 16 # full page width
     ft <- flextable::width(ft, j = "unit", width = 1, unit = "cm")
-    ft <- flextable::width(ft, j = c("n","k"), width = 0.6, unit = "cm")
-    ft <- flextable::width(ft, j = !(colnames(x) %in% c("analyte","n","k","unit")), width = 1.2, unit = "cm")
-    ft <- flextable::width(ft, j = "analyte", width = fw-2*0.6-0.9-sum(!(colnames(x) %in% c("analyte","n","k","unit")))*1.2, unit = "cm")
+    ft <- flextable::width(ft, j = c("n", "k"), width = 0.6, unit = "cm")
+    ft <- flextable::width(ft, j = !(colnames(x) %in% c("analyte", "n", "k", "unit")), width = 1.2, unit = "cm")
+    ft <- flextable::width(ft, j = "analyte", width = fw - 2 * 0.6 - 0.9 - sum(!(colnames(x) %in% c("analyte", "n", "k", "unit"))) * 1.2, unit = "cm")
     return(ft)
   }
 }
